@@ -1,0 +1,17 @@
+{
+  "name": "shift-saas-tenant-do-isolation-probe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "test:unit": "node --test test/gate.test.mjs",
+    "test:runtime": "node --test test/runtime.test.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0",
+    "typescript": "5.9.3"
+  }
+}
