@@ -19,7 +19,9 @@ export function fixture(namespace, suffix = "unit") {
     },
     async isActiveMember(userId, companyId) {
       events.push(["membership", userId, companyId]);
-      return memberships.get(userId)?.has(companyId) === true;
+      const active = memberships.get(userId)?.has(companyId) === true;
+      events.push(["membership:resolved", active]);
+      return active;
     },
     companies: {
       idFromName(companyId) {

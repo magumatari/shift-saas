@@ -7,6 +7,7 @@ test("mock: own company succeeds only after session and membership", async () =>
   assert.deepEqual(await f.write(f.companyA, "synthetic A"), { kind: "ok", value: "synthetic A" });
   assert.deepEqual(f.events, [
     ["session"], ["membership", "fictional-own-user-alice", f.companyA],
+    ["membership:resolved", true],
     ["idFromName", f.companyA], ["get", f.companyA], ["fetch", f.companyA],
   ]);
 });
@@ -81,4 +82,69 @@ test("mock: multi-member only reads/writes selected company, never all membershi
   assert.deepEqual(await f.write(f.companyA, f.companyB), { kind: "ok", value: f.companyB });
   assert.deepEqual(f.events.filter(([event]) => event === "idFromName"), [["idFromName", f.companyA]]);
   assert.deepEqual(await f.read(f.companyB), { kind: "ok", value: "B" });
+});
+
+test("mock: unknown company cannot generate a DO ID, stub, or fetch", async () => {
+  const f = fixture(memoryNamespace());
+  const unknownCompany = "fictional-company-not-in-memberships";
+  assert.deepEqual(await f.read(unknownCompany), { kind: "not_member" });
+  assert.deepEqual(await f.write(unknownCompany, "attack"), { kind: "not_member" });
+  assertNoObjectAccess(f.events);
+  assert.deepEqual(f.events, Array(2).fill([
+    ["session"], ["membership", "fictional-own-user-alice", unknownCompany], ["membership:resolved", false],
+  ]).flat());
+});
+
+test("mock: unknown user cannot generate a DO ID, stub, or fetch", async () => {
+  const f = fixture(memoryNamespace());
+  f.signIn("fictional-own-user-unknown");
+  assert.deepEqual(await f.read(f.companyA), { kind: "not_member" });
+  assert.deepEqual(await f.write(f.companyA, "attack"), { kind: "not_member" });
+  assertNoObjectAccess(f.events);
+  assert.deepEqual(f.events, Array(2).fill([
+    ["session"], ["membership", "fictional-own-user-unknown", f.companyA], ["membership:resolved", false],
+  ]).flat());
+});
+
+test("mock: empty or missing company ID is rejected before membership, even if it would return true", async () => {
+  for (const companyId of ["", " \t\n", undefined, null, 1]) {
+    const f = fixture(memoryNamespace());
+    f.deps.isActiveMember = async () => { assert.fail("invalid company must not be checked"); };
+    assert.deepEqual(await f.read(companyId), { kind: "not_member" });
+    assert.deepEqual(await f.write(companyId, "attack"), { kind: "not_member" });
+    assert.deepEqual(f.events, [["session"], ["session"]]);
+    assertNoObjectAccess(f.events);
+  }
+});
+
+test("mock: missing or malformed session identity fails closed before membership", async () => {
+  for (const user of [
+    undefined, {}, { ownUserId: undefined }, { ownUserId: null },
+    { ownUserId: "" }, { ownUserId: " \t" }, { ownUserId: 1 },
+    false, "fictional-own-user-alice", [],
+    Object.create({ ownUserId: "fictional-own-user-alice" }),
+  ]) {
+    const f = fixture(memoryNamespace());
+    f.deps.resolveCurrentUser = async () => { f.events.push(["session"]); return user; };
+    f.deps.isActiveMember = async () => { assert.fail("invalid user must not be checked"); };
+    assert.deepEqual(await f.read(f.companyA), { kind: "unauthenticated" });
+    assert.deepEqual(await f.write(f.companyA, "attack"), { kind: "unauthenticated" });
+    assert.deepEqual(f.events, [["session"], ["session"]]);
+    assertNoObjectAccess(f.events);
+  }
+});
+
+test("mock: non-2xx DO responses propagate errors without retry or a successful result", async () => {
+  for (const status of [400, 403, 404, 500, 503]) {
+    const f = fixture({
+      idFromName: name => name,
+      get: () => ({ async fetch() { return new Response("synthetic failure", { status }); } }),
+    });
+    await assert.rejects(f.read(f.companyA), { message: `Probe DO failed: ${status}` });
+    await assert.rejects(f.write(f.companyA, "value"), { message: `Probe DO failed: ${status}` });
+    assert.deepEqual(f.events, Array(2).fill([
+      ["session"], ["membership", "fictional-own-user-alice", f.companyA], ["membership:resolved", true],
+      ["idFromName", f.companyA], ["get", f.companyA], ["fetch", f.companyA],
+    ]).flat());
+  }
 });

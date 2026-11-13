@@ -1,6 +1,6 @@
 // Probe boundary only. Session resolution and membership storage are not implemented here.
 export interface ProbeDependencies<Id> {
-  resolveCurrentUser(): Promise<{ ownUserId: string } | null>;
+  resolveCurrentUser(): Promise<unknown>;
   isActiveMember(ownUserId: string, companyId: string): Promise<boolean>;
   companies: {
     idFromName(companyId: string): Id;
@@ -16,6 +16,17 @@ export type ProbeResult =
   | { kind: "not_member" }
   | { kind: "ok"; value: string };
 
+// Probe input guards only: reject absent/blank identities without normalizing IDs.
+function hasNonBlankId(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasOwnUserId(value: unknown): value is { ownUserId: string } {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    && Object.hasOwn(value, "ownUserId")
+    && hasNonBlankId((value as { ownUserId?: unknown }).ownUserId);
+}
+
 // One invocation models one request; companyId is the sole routing input.
 export async function accessCompany<Id>(
   dependencies: ProbeDependencies<Id>,
@@ -23,7 +34,8 @@ export async function accessCompany<Id>(
   operation: ProbeOperation,
 ): Promise<ProbeResult> {
   const user = await dependencies.resolveCurrentUser();
-  if (user === null) return { kind: "unauthenticated" };
+  if (!hasOwnUserId(user)) return { kind: "unauthenticated" };
+  if (!hasNonBlankId(companyId)) return { kind: "not_member" };
 
   // Do not cache this result, derive a DO ID, or obtain a stub before it succeeds.
   if ((await dependencies.isActiveMember(user.ownUserId, companyId)) !== true) {

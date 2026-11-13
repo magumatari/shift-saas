@@ -31,9 +31,10 @@ test("workerd SQLite: own company round trip and stable/distinct DO identities",
   assert.notEqual(a.toString(), namespace.idFromName(f.companyB).toString());
   assert.deepEqual(await f.write(f.companyA, "synthetic A"), { kind: "ok", value: "synthetic A" });
   assert.deepEqual(await f.read(f.companyA), { kind: "ok", value: "synthetic A" });
-  assert.deepEqual(f.events.slice(0, 3), [
-    ["session"], ["membership", "fictional-own-user-alice", f.companyA], ["idFromName", f.companyA],
-  ]);
+  assert.deepEqual(f.events, Array(2).fill([
+    ["session"], ["membership", "fictional-own-user-alice", f.companyA], ["membership:resolved", true],
+    ["idFromName", f.companyA], ["get", a.toString()], ["fetch", a.toString()],
+  ]).flat());
 });
 
 test("workerd SQLite: denied foreign reads/writes leave B data intact and never open B", async () => {
@@ -49,7 +50,7 @@ test("workerd SQLite: denied foreign reads/writes leave B data intact and never 
   assert.deepEqual(await f.read(f.companyB), { kind: "ok", value: "B unchanged" });
 });
 
-test("workerd SQLite: logged out requests never reach an object", async () => {
+test("workerd boundary: logged out requests never reach an object", async () => {
   const f = fixture(namespace, "loggedout");
   f.signIn(null);
   assert.deepEqual(await f.read(f.companyA), { kind: "unauthenticated" });
@@ -89,19 +90,68 @@ test("workerd SQLite: multi-member A/B markers and writes remain isolated", asyn
 
 test("workerd SQLite: pending membership success must complete before namespace access", async () => {
   const f = fixture(namespace, "pending");
+  f.signIn("fictional-own-user-multi");
+  await f.write(f.companyB, "B unchanged during pending A write");
+  f.clearEvents();
+  const originalMembershipCheck = f.deps.isActiveMember;
   let finish;
   let entered;
   const checking = new Promise(resolve => { entered = resolve; });
-  f.deps.isActiveMember = async () => {
+  f.deps.isActiveMember = async (ownUserId, companyId) => {
+    f.events.push(["membership", ownUserId, companyId]);
     entered();
-    return new Promise(resolve => { finish = resolve; });
+    const active = await new Promise(resolve => { finish = resolve; });
+    f.events.push(["membership:resolved", active]);
+    return active;
   };
   const pending = f.write(f.companyA, "after check");
   await checking;
+  assert.deepEqual(f.events, [["session"], ["membership", "fictional-own-user-multi", f.companyA]]);
   assertNoObjectAccess(f.events);
   finish(true);
   assert.deepEqual(await pending, { kind: "ok", value: "after check" });
-  assert.deepEqual(f.events.filter(([event]) => event === "idFromName"), [["idFromName", f.companyA]]);
+  const aId = namespace.idFromName(f.companyA).toString();
+  assert.deepEqual(f.events, [
+    ["session"], ["membership", "fictional-own-user-multi", f.companyA], ["membership:resolved", true],
+    ["idFromName", f.companyA], ["get", aId], ["fetch", aId],
+  ]);
+  f.deps.isActiveMember = originalMembershipCheck;
+  assert.deepEqual(await f.read(f.companyA), { kind: "ok", value: "after check" });
+  assert.deepEqual(await f.read(f.companyB), { kind: "ok", value: "B unchanged during pending A write" });
+  const bId = namespace.idFromName(f.companyB).toString();
+  assert.deepEqual(f.events, [
+    ...Array(2).fill([
+      ["session"], ["membership", "fictional-own-user-multi", f.companyA], ["membership:resolved", true],
+      ["idFromName", f.companyA], ["get", aId], ["fetch", aId],
+    ]).flat(),
+    ["session"], ["membership", "fictional-own-user-multi", f.companyB], ["membership:resolved", true],
+    ["idFromName", f.companyB], ["get", bId], ["fetch", bId],
+  ]);
+});
+
+test("workerd boundary: unknown company/user and empty or missing IDs never reach a DO", async () => {
+  const f = fixture(namespace, "invalid");
+  const unknownCompany = "fictional-company-unknown-runtime";
+  assert.deepEqual(await f.read(unknownCompany), { kind: "not_member" });
+  assert.deepEqual(await f.write(unknownCompany, "attack"), { kind: "not_member" });
+  f.signIn("fictional-own-user-unknown");
+  assert.deepEqual(await f.read(f.companyA), { kind: "not_member" });
+  assert.deepEqual(await f.write(f.companyA, "attack"), { kind: "not_member" });
+  assertNoObjectAccess(f.events);
+
+  f.signIn("fictional-own-user-alice");
+  f.clearEvents();
+  for (const companyId of ["", " \t", undefined, null]) {
+    assert.deepEqual(await f.read(companyId), { kind: "not_member" });
+    assert.deepEqual(await f.write(companyId, "attack"), { kind: "not_member" });
+  }
+  for (const userId of ["", " \t", undefined]) {
+    f.signIn(userId);
+    assert.deepEqual(await f.read(f.companyA), { kind: "unauthenticated" });
+    assert.deepEqual(await f.write(f.companyA, "attack"), { kind: "unauthenticated" });
+  }
+  assert.deepEqual(f.events, Array(14).fill(["session"]));
+  assertNoObjectAccess(f.events);
 });
 
 test("workerd: public Worker endpoint exposes no probe or test login", async () => {
