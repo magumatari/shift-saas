@@ -1,0 +1,20 @@
+{
+  "name": "shift-saas",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "golden:check": "tsx scripts/check-golden.ts",
+    "test": "tsx --test scripts/check-golden.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "ajv": "8.20.0",
+    "jsonc-parser": "3.3.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}
