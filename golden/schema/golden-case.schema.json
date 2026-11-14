@@ -1,0 +1,731 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "H10掲載例から開始する形式定義。未決の入力や判定不能理由を推測で追加しない。対応範囲と未決事項は golden/README.md 参照。",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "definition_version": {
+      "const": "1.3"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "confirmed",
+        "provisional_legal",
+        "undecided"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "unit",
+        "integrated"
+      ]
+    },
+    "target_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "approved_by": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "approved_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/datetime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "group_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assignment"
+      }
+    },
+    "expected": {
+      "$ref": "#/$defs/expected"
+    }
+  },
+  "required": [
+    "schema_version",
+    "definition_version",
+    "id",
+    "title",
+    "status",
+    "kind",
+    "target_rules",
+    "depends_on",
+    "input",
+    "assignments"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "confirmed",
+              "provisional_legal"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "approved_by",
+          "approved_at",
+          "expected"
+        ],
+        "properties": {
+          "approved_by": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approved_at": {
+            "$ref": "#/$defs/datetime"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "undecided"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "expected"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "datetime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "rule": {
+      "enum": [
+        "H01",
+        "H02",
+        "H03",
+        "H04",
+        "H05",
+        "H06",
+        "H07",
+        "H08",
+        "H09",
+        "H10",
+        "H11",
+        "H12",
+        "H13",
+        "H14",
+        "H15",
+        "H16",
+        "H17",
+        "H18",
+        "H19"
+      ]
+    },
+    "result": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INDETERMINATE"
+      ]
+    },
+    "interval": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "period": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/date"
+        },
+        {
+          "$ref": "#/$defs/date"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "assignment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "employee": {
+          "type": "string",
+          "minLength": 1
+        },
+        "store": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^.+@[1-9][0-9]*$"
+        },
+        "start_date": {
+          "$ref": "#/$defs/date"
+        }
+      },
+      "required": [
+        "id",
+        "employee",
+        "store",
+        "pattern",
+        "start_date"
+      ],
+      "additionalProperties": false
+    },
+    "pattern": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start": {
+          "$ref": "#/$defs/time"
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "work": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/interval"
+          }
+        },
+        "break": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/interval"
+          }
+        },
+        "cover": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/interval"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "start",
+        "duration_minutes",
+        "work",
+        "break",
+        "cover"
+      ],
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "company": {
+          "type": "object",
+          "properties": {
+            "week_start": {
+              "enum": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday"
+              ]
+            },
+            "min_rest_minutes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "forbidden_sequences": {
+              "type": "array",
+              "items": false,
+              "$comment": "非空要素のJSON形式は未決。現時点では文書の空配列のみ対応。"
+            }
+          },
+          "required": [
+            "week_start",
+            "min_rest_minutes",
+            "forbidden_sequences"
+          ],
+          "additionalProperties": false
+        },
+        "stores": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "employees": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "age_class": {
+                "const": "adult",
+                "$comment": "他の年齢区分のJSON値と適用期間の形式は未決。H10の掲載例の範囲。"
+              },
+              "employment": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/date"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/date"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "id",
+              "age_class",
+              "employment"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pattern"
+          }
+        },
+        "existing_assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assignment"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "verify_period": {
+              "$ref": "#/$defs/period"
+            },
+            "assignments_complete": {
+              "$ref": "#/$defs/period"
+            },
+            "records_complete": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "employees": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "period": {
+                    "$ref": "#/$defs/period"
+                  }
+                },
+                "required": [
+                  "employees",
+                  "period"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "verify_period",
+            "assignments_complete",
+            "records_complete"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "company",
+        "stores",
+        "employees",
+        "patterns",
+        "existing_assignments",
+        "coverage"
+      ],
+      "additionalProperties": false
+    },
+    "violation": {
+      "type": "object",
+      "properties": {
+        "rule": {
+          "const": "H10"
+        },
+        "code": {
+          "const": "REST_SHORTAGE"
+        },
+        "employee": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "from": {
+          "$ref": "#/$defs/datetime"
+        },
+        "to": {
+          "$ref": "#/$defs/datetime"
+        },
+        "measured": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "comparison": {
+          "enum": [
+            "<=",
+            ">="
+          ]
+        },
+        "diff": {
+          "type": "integer"
+        },
+        "unit": {
+          "enum": [
+            "minutes",
+            "days",
+            "people",
+            "assignments"
+          ]
+        }
+      },
+      "required": [
+        "rule",
+        "code",
+        "employee",
+        "assignments",
+        "from",
+        "to"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "measured": [
+          "limit",
+          "comparison",
+          "diff",
+          "unit"
+        ],
+        "limit": [
+          "measured",
+          "comparison",
+          "diff",
+          "unit"
+        ],
+        "comparison": [
+          "measured",
+          "limit",
+          "diff",
+          "unit"
+        ],
+        "diff": [
+          "measured",
+          "limit",
+          "comparison",
+          "unit"
+        ],
+        "unit": [
+          "measured",
+          "limit",
+          "comparison",
+          "diff"
+        ]
+      }
+    },
+    "expected": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/result"
+        },
+        "evaluated_rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rule"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "rule_results": {
+          "type": "object",
+          "properties": {
+            "H01": {
+              "$ref": "#/$defs/result"
+            },
+            "H02": {
+              "$ref": "#/$defs/result"
+            },
+            "H03": {
+              "$ref": "#/$defs/result"
+            },
+            "H04": {
+              "$ref": "#/$defs/result"
+            },
+            "H05": {
+              "$ref": "#/$defs/result"
+            },
+            "H06": {
+              "$ref": "#/$defs/result"
+            },
+            "H07": {
+              "$ref": "#/$defs/result"
+            },
+            "H08": {
+              "$ref": "#/$defs/result"
+            },
+            "H09": {
+              "$ref": "#/$defs/result"
+            },
+            "H10": {
+              "$ref": "#/$defs/result"
+            },
+            "H11": {
+              "$ref": "#/$defs/result"
+            },
+            "H12": {
+              "$ref": "#/$defs/result"
+            },
+            "H13": {
+              "$ref": "#/$defs/result"
+            },
+            "H14": {
+              "$ref": "#/$defs/result"
+            },
+            "H15": {
+              "$ref": "#/$defs/result"
+            },
+            "H16": {
+              "$ref": "#/$defs/result"
+            },
+            "H17": {
+              "$ref": "#/$defs/result"
+            },
+            "H18": {
+              "$ref": "#/$defs/result"
+            },
+            "H19": {
+              "$ref": "#/$defs/result"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/violation"
+          },
+          "uniqueItems": true
+        },
+        "indeterminate": {
+          "type": "array",
+          "items": false,
+          "$comment": "理由コードおよび欠けた記録の具体的JSONキー・値は未決。推測で定義せず、非空の理由は形式決定後に対応する。"
+        },
+        "derivation": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "result",
+        "evaluated_rules",
+        "rule_results",
+        "violations",
+        "indeterminate"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "violations": {
+                "maxItems": 0,
+                "type": "array"
+              },
+              "indeterminate": {
+                "maxItems": 0,
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "FAIL"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "violations": {
+                "minItems": 1,
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "INDETERMINATE"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "violations": {
+                "maxItems": 0,
+                "type": "array"
+              },
+              "indeterminate": {
+                "minItems": 1,
+                "type": "array"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
