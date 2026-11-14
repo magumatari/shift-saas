@@ -126,8 +126,6 @@ const bad: [string, (c: Fixture) => void, RegExp][] = [
   ['reversed employment', c => { c.input.employees[0].employment=['2026-12-31','2026-01-01']; }, /employment: start must be <= end/],
   ['draft with approver', c => { c.approved_by='synthetic-reviewer'; }, /draft\/approved_by: unapproved value must be null/],
   ['draft with approval time', c => { c.approved_at='2026-12-01T00:00'; }, /draft\/approved_at: unapproved value must be null/],
-  ['undecided with approver', c => { c.status='undecided'; delete c.expected; c.approved_by='synthetic-reviewer'; }, /undecided\/approved_by: unapproved value must be null/],
-  ['undecided with approval time', c => { c.status='undecided'; delete c.expected; c.approved_at='2026-12-01T00:00'; }, /undecided\/approved_at: unapproved value must be null/],
   ['zero duration even with empty partition', c => { const p=c.input.patterns[1]; p.duration_minutes=0; p.work=[]; p.break=[]; p.cover=[]; }, /duration_minutes must be positive/],
 ];
 for (const [name, change, error] of bad) test(name, async () => {
@@ -143,6 +141,55 @@ test('quantity fields may all be absent, valid leap day and adjacent work are al
 });
 test('undecided without expected is accepted', async () => {
   await withCase(c => {c.status='undecided'; delete c.expected;}, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+});
+for (const field of ['approved_by', 'approved_at', 'both', 'omitted']) {
+  test(`undecided approval fields follow the unchanged Schema: ${field}`, async () => {
+    await withCase(c => {
+      c.status='undecided'; delete c.expected;
+      if (field==='approved_by' || field==='both') c.approved_by='synthetic-reviewer';
+      if (field==='approved_at' || field==='both') c.approved_at='2026-12-01T00:00';
+      if (field==='omitted') { delete c.approved_by; delete c.approved_at; }
+    }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+  });
+}
+for (const status of ['confirmed', 'provisional_legal']) {
+  test(`${status} still requires both approval fields`, async () => {
+    await withCase(c => {
+      c.status=status; c.approved_by='synthetic-reviewer'; c.approved_at='2026-12-01T00:00';
+    }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+    for (const field of ['approved_by', 'approved_at']) {
+      await withCase(c => {
+        c.status=status; c.approved_by='synthetic-reviewer'; c.approved_at='2026-12-01T00:00';
+        delete c[field];
+      }, async dir => assert.match((await checkGolden(dir)).errors.join('\n'), new RegExp(field)));
+      await withCase(c => {
+        c.status=status; c.approved_by='synthetic-reviewer'; c.approved_at='2026-12-01T00:00';
+        c[field]=null;
+      }, async dir => assert.match((await checkGolden(dir)).errors.join('\n'), new RegExp(field)));
+    }
+  });
+}
+for (const extension of ['JSON', 'Json', 'json5', 'jsonc', 'json.bak', 'yaml', 'txt']) {
+  test(`unsupported example extension is an error: ${extension}`, async () => {
+    await withCase(() => {}, async dir => {
+      await mkdir(join(dir,'nested'));
+      const name=`extra.${extension}`;
+      await copyFile(join(dir,'case.json'),join(dir,'nested',name));
+      const result=await checkGolden(dir);
+      assert.equal(result.count,1);
+      assert.deepEqual(result.errors,[`nested/${name}: unsupported golden case file; only .json is supported`]);
+      if (extension==='JSON') {
+        const cli=spawnSync(process.execPath,['--import','tsx','scripts/check-golden.ts',dir],{encoding:'utf8'});
+        assert.equal(cli.status,1); assert.match(cli.stderr,/extra\.JSON: unsupported golden case file/);
+      }
+    });
+  });
+}
+test('the existing root README and canonical Schema are not examples', async () => {
+  await withCase(() => {}, async dir => {
+    await copyFile('golden/README.md',join(dir,'README.md'));
+    assert.deepEqual(await checkGolden(dir),{count:1,errors:[]});
+  });
 });
 test('existing assignment IDs can be referenced by violations', async () => {
   await withCase(c => { c.input.existing_assignments=[c.assignments.shift()]; }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));

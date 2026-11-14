@@ -80,7 +80,7 @@ export function semanticErrors(c: Case): string[] {
   period(c.input.coverage.assignments_complete, 'input/coverage/assignments_complete');
   c.input.coverage.records_complete.forEach((r, i) => period(r.period, `input/coverage/records_complete/${i}/period`));
   c.input.employees.forEach((e, i) => period(e.employment, `input/employees/${i}/employment`));
-  if (c.status === 'draft' || c.status === 'undecided') {
+  if (c.status === 'draft') {
     for (const key of ['approved_by', 'approved_at'] as const) {
       // Do not invent a meaning for omitted optional keys or make them required.
       if (c[key] !== undefined && c[key] !== null) errors.push(`${c.status}/${key}: unapproved value must be null`);
@@ -175,6 +175,7 @@ export function semanticErrors(c: Case): string[] {
 export async function checkGolden(directory: string): Promise<{ count: number; errors: string[] }> {
   const root = resolve(directory);
   const schemaPath = resolve(root, 'schema/golden-case.schema.json');
+  const readmePath = resolve(root, 'README.md');
   const schema = parseJson(await readFile(schemaPath, 'utf8'));
   const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
   const validate = ajv.compile(schema as object);
@@ -184,11 +185,14 @@ export async function checkGolden(directory: string): Promise<{ count: number; e
   async function walk(dir: string): Promise<void> {
     for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const file = resolve(dir, entry.name);
-      if (file === schemaPath) continue;
       if (entry.isDirectory()) { await walk(file); continue; }
-      if (!entry.name.endsWith('.json')) continue;
-      count++;
+      if (file === schemaPath || file === readmePath) continue;
       const name = relative(root, file);
+      if (!entry.name.endsWith('.json')) {
+        errors.push(`${name}: unsupported golden case file; only .json is supported`);
+        continue;
+      }
+      count++;
       try {
         const c = parseJson(await readFile(file, 'utf8'));
         if (!validate(c)) {
