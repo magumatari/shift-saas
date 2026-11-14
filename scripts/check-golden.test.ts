@@ -31,9 +31,37 @@ test('both draft examples pass format checks and FAIL matches the document', asy
   for (const c of [fail, pass]) {
     assert.equal(c.status, 'draft'); assert.equal(c.approved_by, null); assert.equal(c.approved_at, null);
   }
-  const minutes = (end: string) => (Date.parse(end + '+09:00') - Date.parse('2026-12-08T06:00+09:00')) / 60000;
-  assert.equal(minutes('2026-12-09T01:59'), 1199);
-  assert.equal(minutes('2026-12-09T02:00'), 1200);
+  const assignmentTimes = (c: Fixture) => {
+    type Pattern = { id: string; version: number; start: string; duration_minutes: number };
+    type Assignment = { id: string; pattern: string; start_date: string };
+    const patterns = new Map((c.input.patterns as Pattern[]).map(p => [`${p.id}@${p.version}`, p]));
+    return (c.assignments as Assignment[]).map(a => {
+      const p = patterns.get(a.pattern); assert.ok(p);
+      const start = Date.parse(`${a.start_date}T${p.start}+09:00`);
+      return { id: a.id, start, end: start + p.duration_minutes * 60000 };
+    }).sort((a, b) => a.start - b.start);
+  };
+  const gaps = [fail, pass].map(c => {
+    const times = assignmentTimes(c); assert.equal(times.length, 2);
+    return (times[1].start - times[0].end) / 60000;
+  });
+  assert.equal(gaps[0], fail.input.company.min_rest_minutes - 1);
+  assert.equal(gaps[1], pass.input.company.min_rest_minutes);
+  assert.equal(fail.expected.result, 'FAIL');
+  assert.deepEqual(fail.expected.rule_results, { H10: 'FAIL' });
+  assert.equal(fail.expected.violations.length, 1);
+  const v = fail.expected.violations[0];
+  const times = assignmentTimes(fail);
+  assert.equal(Date.parse(v.from + '+09:00'), times[0].end);
+  assert.equal(Date.parse(v.to + '+09:00'), times[1].start);
+  assert.deepEqual([...v.assignments].sort(), times.map(a => a.id).sort());
+  assert.equal(v.measured, gaps[0]);
+  assert.equal(v.limit, fail.input.company.min_rest_minutes);
+  assert.equal(v.diff, gaps[0] - v.limit);
+  assert.equal(v.comparison, '>=');
+  assert.equal(pass.expected.result, 'PASS');
+  assert.deepEqual(pass.expected.rule_results, { H10: 'PASS' });
+  assert.deepEqual(pass.expected.violations, []);
 });
 for (const text of ['{"a":1,"a":2}', '{"nested":{"a":1,"\\u0061":2}}', '{"a":1,}', '{/*comment*/"a":1}', '{"a":NaN}']) {
   test(`strict JSON rejects ${text}`, () => assert.throws(() => parseJson(text)));
@@ -70,6 +98,37 @@ const bad: [string, (c: Fixture) => void, RegExp][] = [
   ['missing store', c => { c.assignments[0].store='missing'; }, /unknown store/],
   ['missing pattern version', c => { c.assignments[0].pattern='NIGHT@2'; }, /unknown pattern/],
   ['existing assignment reference', c => { c.input.existing_assignments=[{...c.assignments[0],id:'A3',employee:'missing'}]; }, /unknown employee/],
+  ['unknown violation employee', c => { c.expected.violations[0].employee='E9'; }, /expected\/violations\/0: unknown employee E9/],
+  ['unknown first violation assignment', c => { c.expected.violations[0].assignments[0]='A9'; }, /expected\/violations\/0: unknown assignment A9/],
+  ['unknown second violation assignment', c => { c.expected.violations[0].assignments[1]='A9'; }, /expected\/violations\/0: unknown assignment A9/],
+  ['unknown complete-record employee', c => { c.input.coverage.records_complete[0].employees=['E9']; }, /records_complete\/0: unknown employee E9/],
+  ['PASS with FAIL rule result and no violations', c => { c.expected.result='PASS'; c.expected.violations=[]; }, /expected\/result: must agree/],
+  ['FAIL with PASS rule result', c => { c.expected.rule_results.H10='PASS'; }, /expected\/result: must agree/],
+  ['empty rule results', c => { c.expected.rule_results={}; }, /keys must match evaluated_rules/],
+  ['extra rule result', c => { c.expected.rule_results.H11='PASS'; }, /keys must match evaluated_rules/],
+  ['missing evaluated rule result', c => { c.target_rules.push('H11'); c.expected.evaluated_rules.push('H11'); }, /keys must match evaluated_rules/],
+  ['unit misses target rule', c => { c.target_rules.push('H11'); }, /must match target_rules/],
+  ['unit evaluates extra rule', c => { c.expected.evaluated_rules.push('H11'); c.expected.rule_results.H11='PASS'; }, /must match target_rules/],
+  ['violation outside evaluated rules', c => { c.target_rules=['H11']; c.expected.evaluated_rules=['H11']; c.expected.rule_results={H11:'FAIL'}; }, /rule must be in evaluated_rules/],
+  ['violation with non-FAIL rule', c => { c.expected.rule_results.H10='INDETERMINATE'; }, /rule result must be FAIL/],
+  ['additional FAIL rule without violation', c => { c.target_rules.push('H11'); c.expected.evaluated_rules.push('H11'); c.expected.rule_results.H11='FAIL'; }, /H11: FAIL requires a violation/],
+  ['indeterminate rule without reasons alongside FAIL', c => { c.target_rules.push('H11'); c.expected.evaluated_rules.push('H11'); c.expected.rule_results.H11='INDETERMINATE'; }, /indeterminate rule requires reasons/],
+  ['integrated misses rules', c => { c.kind='integrated'; }, /must match H01-H19/],
+  ['lower-bound violation at equality', c => { const v=c.expected.violations[0]; v.measured=v.limit; v.diff=0; }, /lower-bound violation/],
+  ['lower-bound violation has positive diff', c => { const v=c.expected.violations[0]; v.measured=v.limit+1; v.diff=1; }, /lower-bound violation/],
+  ['upper-bound comparison has negative diff', c => { c.expected.violations[0].comparison='<='; }, /upper-bound violation/],
+  ['REST_SHORTAGE cannot become upper-bound violation', c => { const v=c.expected.violations[0]; v.comparison='<='; v.measured=v.limit+1; v.diff=1; }, /REST_SHORTAGE comparison must be >=/],
+  ['empty violation interval', c => { c.expected.violations[0].to=c.expected.violations[0].from; }, /from must be < to/],
+  ['reversed violation interval', c => { const v=c.expected.violations[0]; [v.from,v.to]=[v.to,v.from]; }, /from must be < to/],
+  ['reversed verify period', c => { c.input.coverage.verify_period.reverse(); }, /verify_period: start must be <= end/],
+  ['reversed assignment coverage', c => { c.input.coverage.assignments_complete.reverse(); }, /assignments_complete: start must be <= end/],
+  ['reversed record period', c => { c.input.coverage.records_complete[0].period.reverse(); }, /records_complete\/0\/period: start must be <= end/],
+  ['reversed employment', c => { c.input.employees[0].employment=['2026-12-31','2026-01-01']; }, /employment: start must be <= end/],
+  ['draft with approver', c => { c.approved_by='synthetic-reviewer'; }, /draft\/approved_by: unapproved value must be null/],
+  ['draft with approval time', c => { c.approved_at='2026-12-01T00:00'; }, /draft\/approved_at: unapproved value must be null/],
+  ['undecided with approver', c => { c.status='undecided'; delete c.expected; c.approved_by='synthetic-reviewer'; }, /undecided\/approved_by: unapproved value must be null/],
+  ['undecided with approval time', c => { c.status='undecided'; delete c.expected; c.approved_at='2026-12-01T00:00'; }, /undecided\/approved_at: unapproved value must be null/],
+  ['zero duration even with empty partition', c => { const p=c.input.patterns[1]; p.duration_minutes=0; p.work=[]; p.break=[]; p.cover=[]; }, /duration_minutes must be positive/],
 ];
 for (const [name, change, error] of bad) test(name, async () => {
   await withCase(change, async dir => assert.match((await checkGolden(dir)).errors.join('\n'), error));
@@ -84,6 +143,29 @@ test('quantity fields may all be absent, valid leap day and adjacent work are al
 });
 test('undecided without expected is accepted', async () => {
   await withCase(c => {c.status='undecided'; delete c.expected;}, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+});
+test('existing assignment IDs can be referenced by violations', async () => {
+  await withCase(c => { c.input.existing_assignments=[c.assignments.shift()]; }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+});
+test('rule lists are sets and all integrated rules can be represented', async () => {
+  await withCase(c => {
+    c.target_rules=['H10','H11']; c.expected.evaluated_rules=['H11','H10']; c.expected.rule_results.H11='PASS';
+  }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+  await withCase(c => {
+    c.kind='integrated';
+    const rules=Array.from({length:19},(_,i)=>`H${String(i+1).padStart(2,'0')}`);
+    c.expected.evaluated_rules=[...rules].reverse();
+    c.expected.rule_results=Object.fromEntries(rules.map(rule=>[rule,rule==='H10'?'FAIL':'PASS']));
+  }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+});
+test('equal date endpoints, open employment and positive one-minute patterns remain valid formats', async () => {
+  await withCase(c => {
+    for (const key of ['verify_period','assignments_complete']) c.input.coverage[key][1]=c.input.coverage[key][0];
+    const record=c.input.coverage.records_complete[0]; record.period[1]=record.period[0];
+    c.input.employees[0].employment[1]=c.input.employees[0].employment[0];
+    const p=c.input.patterns[1]; p.duration_minutes=1; p.work=[[0,1]]; p.cover=[[0,1]];
+  }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
+  assert.equal(fail.input.employees[0].employment[1], null);
 });
 test('duplicate case IDs across nested folders fail and CLI exits nonzero', async () => {
   await withCase(() => {}, async dir => {

@@ -26,8 +26,12 @@ export function parseJson(text: string): unknown {
 
 type Interval = [number, number];
 type Assignment = { id: string; employee: string; store: string; pattern: string; start_date: string };
+type Result = 'PASS' | 'FAIL' | 'INDETERMINATE';
 type Case = {
   id: string;
+  status: 'draft' | 'confirmed' | 'provisional_legal' | 'undecided';
+  kind: 'unit' | 'integrated';
+  target_rules: string[];
   input: {
     employees: { id: string; employment: [string, string | null] }[];
     stores: { id: string }[];
@@ -36,8 +40,18 @@ type Case = {
     coverage: { verify_period: [string, string]; assignments_complete: [string, string]; records_complete: { employees: string[]; period: [string, string] }[] };
   };
   assignments: Assignment[];
+  approved_by?: string | null;
   approved_at?: string | null;
-  expected?: { violations: { from: string; to: string; measured?: number; limit?: number; diff?: number }[] };
+  expected?: {
+    result: Result;
+    evaluated_rules: string[];
+    rule_results: Record<string, Result>;
+    violations: {
+      rule: string; code: string; employee: string; assignments: string[];
+      from: string; to: string; measured?: number; limit?: number; diff?: number; comparison?: '<=' | '>=';
+    }[];
+    indeterminate: unknown[];
+  };
 };
 
 export function semanticErrors(c: Case): string[] {
@@ -58,15 +72,56 @@ export function semanticErrors(c: Case): string[] {
   dates(c.input.coverage.verify_period, '/input/coverage/verify_period');
   dates(c.input.coverage.assignments_complete, '/input/coverage/assignments_complete');
   c.input.coverage.records_complete.forEach((r, i) => dates(r.period, `/input/coverage/records_complete/${i}/period`));
+  // Dates are fixed-width local dates, so ordering needs no host timezone.
+  function period([start, end]: [string, string | null], label: string): void {
+    if (end !== null && start > end) errors.push(`${label}: start must be <= end`);
+  }
+  period(c.input.coverage.verify_period, 'input/coverage/verify_period');
+  period(c.input.coverage.assignments_complete, 'input/coverage/assignments_complete');
+  c.input.coverage.records_complete.forEach((r, i) => period(r.period, `input/coverage/records_complete/${i}/period`));
+  c.input.employees.forEach((e, i) => period(e.employment, `input/employees/${i}/employment`));
+  if (c.status === 'draft' || c.status === 'undecided') {
+    for (const key of ['approved_by', 'approved_at'] as const) {
+      // Do not invent a meaning for omitted optional keys or make them required.
+      if (c[key] !== undefined && c[key] !== null) errors.push(`${c.status}/${key}: unapproved value must be null`);
+    }
+  }
   [...c.assignments, ...c.input.existing_assignments].forEach((a, i) => dates(a.start_date, `/assignments/${i}/start_date`));
   c.expected?.violations.forEach((v, i) => {
     dates(v.from, `/expected/violations/${i}/from`);
     dates(v.to, `/expected/violations/${i}/to`);
   });
   for (const [i, v] of (c.expected?.violations ?? []).entries()) {
-    if (v.measured !== undefined && v.diff !== v.measured - v.limit!) errors.push(`expected/violations/${i}: diff must equal measured - limit`);
+    if (!(v.from < v.to)) errors.push(`expected/violations/${i}: from must be < to`);
+    if (v.measured !== undefined) {
+      if (v.diff !== v.measured - v.limit!) errors.push(`expected/violations/${i}: diff must equal measured - limit`);
+      if (v.comparison === '>=' && !(v.measured < v.limit!)) errors.push(`expected/violations/${i}: lower-bound violation requires measured < limit (negative diff)`);
+      if (v.comparison === '<=' && !(v.measured > v.limit!)) errors.push(`expected/violations/${i}: upper-bound violation requires measured > limit (positive diff)`);
+      if (v.code === 'REST_SHORTAGE' && v.comparison !== '>=') errors.push(`expected/violations/${i}: REST_SHORTAGE comparison must be >=`);
+    }
+  }
+  if (c.expected) {
+    const expected = c.expected;
+    const evaluated = new Set(expected.evaluated_rules);
+    const sameRules = (rules: string[]) => rules.length === evaluated.size && rules.every(rule => evaluated.has(rule));
+    if (!sameRules(Object.keys(expected.rule_results))) errors.push('expected/rule_results: keys must match evaluated_rules');
+    const required = c.kind === 'unit' ? c.target_rules : Array.from({ length: 19 }, (_, i) => `H${String(i + 1).padStart(2, '0')}`);
+    if (!sameRules(required)) errors.push(`expected/evaluated_rules: must match ${c.kind === 'unit' ? 'target_rules' : 'H01-H19'}`);
+    const values = Object.values(expected.rule_results);
+    const overall = values.includes('FAIL') ? 'FAIL' : values.includes('INDETERMINATE') ? 'INDETERMINATE' : 'PASS';
+    if (expected.result !== overall) errors.push('expected/result: must agree with rule_results');
+    for (const [i, violation] of expected.violations.entries()) {
+      if (!evaluated.has(violation.rule)) errors.push(`expected/violations/${i}: rule must be in evaluated_rules`);
+      if (expected.rule_results[violation.rule] !== 'FAIL') errors.push(`expected/violations/${i}: rule result must be FAIL`);
+    }
+    for (const rule of expected.evaluated_rules) {
+      if (expected.rule_results[rule] === 'FAIL' && !expected.violations.some(v => v.rule === rule)) errors.push(`expected/rule_results/${rule}: FAIL requires a violation`);
+    }
+    // Reason element syntax remains undecided; only check the defined necessity.
+    if (values.includes('INDETERMINATE') && !expected.indeterminate.length) errors.push('expected/indeterminate: an indeterminate rule requires reasons');
   }
   for (const p of c.input.patterns) {
+    if (!(p.duration_minutes > 0)) errors.push(`pattern ${p.id}: duration_minutes must be positive (start < end)`);
     for (const name of ['work', 'break', 'cover'] as const) {
       for (const [start, end] of p[name]) {
         if (!(start < end) || start < 0 || end > p.duration_minutes) errors.push(`pattern ${p.id}/${name}: invalid interval [${start}, ${end})`);
@@ -97,11 +152,22 @@ export function semanticErrors(c: Case): string[] {
   const stores = ids(c.input.stores.map(s => s.id), 'store id');
   const patterns = ids(c.input.patterns.map(p => `${p.id}@${p.version}`), 'pattern ID@version');
   const assignments = [...c.assignments, ...c.input.existing_assignments];
-  ids(assignments.map(a => a.id), 'assignment id');
+  const assignmentIds = ids(assignments.map(a => a.id), 'assignment id');
   for (const a of assignments) {
     if (!employees.has(a.employee)) errors.push(`assignment ${a.id}: unknown employee ${a.employee}`);
     if (!stores.has(a.store)) errors.push(`assignment ${a.id}: unknown store ${a.store}`);
     if (!patterns.has(a.pattern)) errors.push(`assignment ${a.id}: unknown pattern ${a.pattern}`);
+  }
+  for (const [i, record] of c.input.coverage.records_complete.entries()) {
+    for (const employee of record.employees) {
+      if (!employees.has(employee)) errors.push(`input/coverage/records_complete/${i}: unknown employee ${employee}`);
+    }
+  }
+  for (const [i, violation] of (c.expected?.violations ?? []).entries()) {
+    if (!employees.has(violation.employee)) errors.push(`expected/violations/${i}: unknown employee ${violation.employee}`);
+    for (const id of violation.assignments) {
+      if (!assignmentIds.has(id)) errors.push(`expected/violations/${i}: unknown assignment ${id}`);
+    }
   }
   return errors;
 }
