@@ -1,0 +1,46 @@
+{
+  "schema_version": "1",
+  "definition_version": "1.3",
+  "id": "H10-rest-1199min-fail",
+  "title": "日跨ぎ勤務の後、休息が1分足りない",
+  "status": "draft",
+  "kind": "unit",
+  "target_rules": ["H10"],
+  "depends_on": ["最小休息は隣り合うすべての勤務に適用"],
+  "approved_by": null,
+  "approved_at": null,
+  "input": {
+    "company": { "week_start": "monday", "min_rest_minutes": 1200, "forbidden_sequences": [] },
+    "stores": [{ "id": "S1" }],
+    "employees": [{ "id": "E1", "age_class": "adult", "employment": ["2026-01-01", null] }],
+    "patterns": [
+      { "id": "NIGHT", "version": 1, "start": "22:00", "duration_minutes": 480,
+        "work": [[0, 240], [300, 480]], "break": [[240, 300]], "cover": [[0, 240], [300, 480]] },
+      { "id": "LATE", "version": 1, "start": "01:59", "duration_minutes": 240,
+        "work": [[0, 240]], "break": [], "cover": [[0, 240]] }
+    ],
+    "existing_assignments": [],
+    "coverage": {
+      "verify_period": ["2026-12-07", "2026-12-10"],
+      "assignments_complete": ["2026-12-07", "2026-12-10"],
+      "records_complete": [{ "employees": ["E1"], "period": ["2026-12-05", "2026-12-12"] }]
+    }
+  },
+  "assignments": [
+    { "id": "A1", "employee": "E1", "store": "S1", "pattern": "NIGHT@1", "start_date": "2026-12-07" },
+    { "id": "A2", "employee": "E1", "store": "S1", "pattern": "LATE@1", "start_date": "2026-12-09" }
+  ],
+  "expected": {
+    "result": "FAIL",
+    "evaluated_rules": ["H10"],
+    "rule_results": { "H10": "FAIL" },
+    "violations": [
+      { "rule": "H10", "code": "REST_SHORTAGE", "employee": "E1",
+        "assignments": ["A1", "A2"],
+        "from": "2026-12-08T06:00", "to": "2026-12-09T01:59",
+        "measured": 1199, "limit": 1200, "comparison": ">=", "diff": -1, "unit": "minutes" }
+    ],
+    "indeterminate": [],
+    "derivation": "A1は12/7 22:00開始・480分で12/8 06:00終了。12/9 01:59開始まで19時間59分＝1,199分"
+  }
+}
