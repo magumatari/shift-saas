@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateRun } from './check-test-run.mjs';
 
@@ -9,7 +9,8 @@ export function validateRegressionRun(result) {
   return validateRun(result, 68);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && process.argv[1] !== '-'
+    && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   try {
     if (process.argv.length !== 2) throw new Error('No arguments accepted');
     const env = { ...process.env };
