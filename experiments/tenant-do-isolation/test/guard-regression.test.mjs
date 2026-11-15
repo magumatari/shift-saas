@@ -73,6 +73,14 @@ for (const key of ['failed','cancelled','skipped','todo']) rejectSummary(`nonzer
 for (const value of [-1,1.5,Number.MAX_SAFE_INTEGER+1,'14']) {
   rejectSummary(`invalid counter ${String(value)}`,s=>s.counts.tests=value);
 }
+// Isolate numeric validation from the minimum/passed/topLevel comparisons.
+// topLevel=1 keeps suites=-1 within the remaining relational bounds.
+for (const value of [-1,1.5,Number.MAX_SAFE_INTEGER+1,'0']) {
+  test(`numeric guard rejects isolated suites ${typeof value}:${String(value)}`,()=>{
+    const s=summary(); s.counts.suites=value; s.counts.topLevel=1;
+    assert.throws(()=>validateRun(run(s),14),/Test counts rejected/);
+  });
+}
 rejectSummary('passed mismatch',s=>s.counts.passed=13);
 rejectSummary('zero topLevel',s=>s.counts.topLevel=0);
 rejectSummary('excessive topLevel',s=>s.counts.topLevel=15);
@@ -109,7 +117,7 @@ for(const [name,body] of [
   ['failed assertion',tests(13)+`test('failure',()=>{throw new Error('synthetic failure');});\n`],
   ['no declared tests','// no declarations\n'],
   ['syntax error','this is not valid JavaScript !\n'],
-  ['early zero exit',tests(0)+'process.exit(0);\n'],
+  ['early zero exit after declaring 14 tests',tests(14)+'process.exit(0);\n'],
 ]) test(`real reporter rejects ${name}`,async t=>{
   const r=await actualRun(t,body);
   assert.equal(r.error,undefined,'Fixture must actually start');
@@ -118,6 +126,12 @@ for(const [name,body] of [
   assert.ok(r.stdout.endsWith('\n'),'Reporter must produce a completed record');
   if(name==='skip'||name==='todo') {
     assert.equal(JSON.parse(r.stdout).counts[name==='skip'?'skipped':'todo'],1);
+  }
+  if(name==='early zero exit after declaring 14 tests') {
+    assert.equal(r.status,0,'The fixture must exercise zero exit, not a crash');
+    assert.ok(JSON.parse(r.stdout).counts.tests<14,'Declared tests must not count as completed');
+    assert.throws(()=>validateRun(r,14),/Test counts rejected/);
+    return;
   }
   assert.throws(()=>validateRun(r,14));
 });
