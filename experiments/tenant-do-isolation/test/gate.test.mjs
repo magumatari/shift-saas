@@ -148,3 +148,8 @@ test("mock: non-2xx DO responses propagate errors without retry or a successful 
     ]).flat());
   }
 });
+
+// Negative-control probe only. Never merge this test.
+test("NEGATIVE CONTROL: tenant-isolation must block merging", () => {
+  assert.fail("Intentional required-check failure; do not merge");
+});
