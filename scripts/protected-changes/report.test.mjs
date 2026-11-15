@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm, rename, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -26,17 +26,35 @@ async function put(dir,path,content='fictional\n') {
 }
 function commit(dir) { git(dir,'add','--all'); git(dir,'commit','-q','--allow-empty','-m','synthetic'); return git(dir,'rev-parse','HEAD'); }
 
-for (const path of [
-  'golden/H10/example.JSON','golden/schema/new.schema.json','scripts/check-golden.ts','scripts/check-golden.test.ts',
-  'scripts/golden/new-loader.mjs','.github/workflows/golden-check.yml','.github/workflows/golden-future.yaml',
-  '.github/workflows/tenant-isolation.yml','.github/workflows/protected-changes.yml',
-  '.claude/settings.json','.claude/commands/audit-pr.md','.claude/commands/templates/future.md',
-  'scripts/protected-changes/report.test.mjs','package.json','package-lock.json',
-]) test(`maps protected category: ${path}`,()=>assert.ok(reasonsFor(path).length>0));
+for (const [path,reason] of [
+  ['golden/H10/example.JSON','golden-examples-and-schema'],['golden/schema/new.schema.json','golden-examples-and-schema'],
+  ['scripts/check-golden.ts','golden-loader-comparer-and-tests'],['scripts/check-golden.test.ts','golden-loader-comparer-and-tests'],
+  ['scripts/golden/new-loader.mjs','golden-loader-comparer-and-tests'],
+  ['.github/workflows/golden-check.yml','validation-and-detection-workflow'],['.github/workflows/golden-future.yaml','validation-and-detection-workflow'],
+  ['.github/workflows/tenant-isolation.yml','validation-and-detection-workflow'],['.github/workflows/protected-changes.yml','validation-and-detection-workflow'],
+  ['.claude/settings.json','audit-permissions'],['.claude/commands/audit-pr.md','audit-command-and-templates'],
+  ['.claude/commands/templates/future.md','audit-command-and-templates'],['scripts/protected-changes/report.test.mjs','change-detector-and-policy'],
+  ['package.json','golden-command-and-dependencies'],['package-lock.json','golden-command-and-dependencies'],
+  ['tsconfig.json','golden-runtime-configuration'],['tsconfig.build.json','golden-runtime-configuration'],
+  ['tsconfig-test.json','golden-runtime-configuration'],['.npmrc','golden-runtime-configuration'],
+]) test(`maps exact protected reason: ${path}`,()=>assert.deepEqual(reasonsFor(path),[reason]));
 test('unrelated files are not swept into the protected table',()=>{
   for(const path of ['README_2.md','src/ui.ts','docs/decisions.md','scripts/unrelated.mjs','.github/workflows/unrelated.yml','.claude/unrelated.txt']) {
     assert.deepEqual(reasonsFor(path),[]);
   }
+});
+for (const path of ['golden','scripts/check-goldenX.ts','.github/workflows/golden.yml','.claude/settings.json.bak',
+  'nested/tsconfig.json','tsconfig.json.bak','nested/.npmrc','.npmrc.bak',
+  'GOLDEN/example.json','.Claude/settings.json',
+  'experiments/tenant-do-isolation/test/gate.test.mjs','experiments/tenant-do-isolation/package.json','experiments/tenant-do-isolation/package-lock.json']) {
+  test(`documented boundary excludes ${path}`,()=>assert.deepEqual(reasonsFor(path),[]));
+}
+test('root runtime configuration changes are recorded by actual Git diff without reading their contents',async t=>{
+  const dir=await fixture(t),base=commit(dir);
+  for(const path of ['tsconfig.json','tsconfig.build.json','.npmrc']) await put(dir,path,'');
+  const r=collectReport(dir,'push',push(base,commit(dir)));
+  assert.deepEqual(new Set(r.protectedChanges.map(x=>x.path)),new Set(['tsconfig.json','tsconfig.build.json','.npmrc']));
+  for(const change of r.protectedChanges) assert.deepEqual(change.reasons,['golden-runtime-configuration']);
 });
 
 test('actual Git modify/add/delete/type change and both sides of moves',async t=>{
@@ -114,6 +132,7 @@ for(const [name,eventName,event] of [
   ['missing payload','pull_request',null],['missing head','pull_request',{pull_request:{base:{ref:'main',sha:id}}}],
   ['wrong target','pull_request',{pull_request:{base:{ref:'other',sha:id},head:{sha:id}}}],
   ['missing before','push',{ref:'refs/heads/main',after:id}],['zero before','push',push('0'.repeat(40),id)],
+  ['zero after','push',push(id,'0'.repeat(40))],['zero PR head','pull_request',pr(id,'0'.repeat(40))],
   ['option-like SHA','push',push('--help',id)],['revision syntax','push',push('HEAD~1',id)],
   ['wrong push ref','push',{...push(id,id),ref:'refs/heads/other'}],['unsupported event','pull_request_target',pr(id,id)],
 ]) test(`rejects event ${name}`,()=>assert.throws(()=>comparison(eventName,event)));
@@ -123,23 +142,47 @@ for(const [name,bytes] of [
   ['empty path',Buffer.from('M\0\0')],['duplicate',Buffer.from('M\0golden/a\0A\0golden/a\0')],
   ['traversal',Buffer.from('M\0../golden/a\0')],['absolute',Buffer.from('M\0/golden/a\0')],
   ['invalid UTF8',Buffer.from([77,0,255,0])],
+  ['copy status',Buffer.from('C\0golden/a\0')],['unknown X status',Buffer.from('X\0golden/a\0')],
 ]) test(`rejects malformed diff ${name}`,()=>assert.throws(()=>parseDiff(bytes)));
+test('NUL parser accepts type changes explicitly',()=>assert.deepEqual(parseDiff(Buffer.from('T\0golden/type.json\0')),[{status:'T',path:'golden/type.json'}]));
 
-async function cli(t, eventText, {eventName='push',missingFile=false,unwritableSummary=false,args=[]}={}) {
+async function cli(t, eventText, {eventName='push',missingFile=false,unwritableSummary=false,missingSummary=false,emptySummary=false,entryLink,args=[]}={}) {
   const dir=await fixture(t),base=commit(dir); await put(dir,'golden/fixture.json'); const head=commit(dir);
   const eventPath=join(dir,'event.json'),summaryPath=join(dir,'summary.md');
   if(!missingFile) await writeFile(eventPath,eventText??JSON.stringify(push(base,head)));
-  return spawnSync(process.execPath,[fileURLToPath(new URL('./report.mjs',import.meta.url)),...args],{
-    cwd:dir,env:{...process.env,GITHUB_EVENT_NAME:eventName,GITHUB_EVENT_PATH:eventPath,GITHUB_STEP_SUMMARY:unwritableSummary?dir:summaryPath},
+  let entry=fileURLToPath(new URL('./report.mjs',import.meta.url));
+  if(entryLink==='file') { const link=join(dir,'linked-entry.mjs'); await symlink(entry,link); entry=link; }
+  if(entryLink==='directory') { const link=join(dir,'linked-source'); await symlink(dirname(entry),link); entry=join(link,'report.mjs'); }
+  const env={...process.env,GITHUB_EVENT_NAME:eventName,GITHUB_EVENT_PATH:eventPath,GITHUB_STEP_SUMMARY:unwritableSummary?dir:summaryPath};
+  if(missingSummary) delete env.GITHUB_STEP_SUMMARY;
+  if(emptySummary) env.GITHUB_STEP_SUMMARY='';
+  const r=spawnSync(process.execPath,[entry,...args],{
+    cwd:dir,env,
     encoding:'utf8',timeout:10_000,
   });
+  return {...r,summary:existsSync(summaryPath)?await readFile(summaryPath,'utf8'):undefined};
 }
 test('CLI reads event JSON and emits report, not approval',async t=>{
   const r=await cli(t); assert.equal(r.status,0,r.stderr);
   const report=JSON.parse(r.stdout); assert.equal(report.approval,'not-evaluated'); assert.equal(report.protectedChanges.length,1);
+  assert.equal(r.summary,summaryMarkdown(report));
+  assert.match(r.summary,/Detection is not owner approval/);
+  assert.ok(r.summary.includes(report.base)); assert.ok(r.summary.includes(report.head));
+  assert.match(r.summary,/golden\/fixture.json/);
 });
+for(const entryLink of ['file','directory']) test(`symlink ${entryLink} entry executes and records a report`,async t=>{
+  const r=await cli(t,null,{entryLink}); assert.equal(r.status,0,r.stderr);
+  const report=JSON.parse(r.stdout); assert.equal(report.changedFiles,1); assert.equal(r.summary,summaryMarkdown(report));
+});
+for(const [name,options] of [['missing',{missingSummary:true}],['empty',{emptySummary:true}]]) {
+  test(`CLI fails on ${name} summary destination before reporting success`,async t=>{
+    const r=await cli(t,null,options); assert.equal(r.status,1); assert.equal(r.stdout,''); assert.equal(r.summary,undefined);
+    assert.match(r.stderr,/GITHUB_STEP_SUMMARY is required/);
+  });
+}
 test('summary write failure also exits nonzero',async t=>{
   const r=await cli(t,null,{unwritableSummary:true}); assert.equal(r.status,1);
+  assert.equal(r.stdout,'');
   assert.match(r.stderr,/Protected change detection failed/);
 });
 for(const [name,text,options] of [

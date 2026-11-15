@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, appendFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, appendFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const shaPattern = /^[0-9a-f]{40}$/;
@@ -66,6 +65,7 @@ export function reasonsFor(path) {
   if (path==='.claude/settings.json') reasons.push('audit-permissions');
   if (path.startsWith('scripts/protected-changes/')) reasons.push('change-detector-and-policy');
   if (['package.json','package-lock.json'].includes(path)) reasons.push('golden-command-and-dependencies');
+  if (/^tsconfig[^/]*\.json$/.test(path) || path==='.npmrc') reasons.push('golden-runtime-configuration');
   return reasons;
 }
 
@@ -97,13 +97,15 @@ export function summaryMarkdown(report) {
   return `## Protected change detection\n\nDetection is not owner approval. Review the fixed SHA and diff before adoption.\n\n<pre>${escaped}</pre>\n`;
 }
 
-if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+if (process.argv[1] && process.argv[1]!=='-'
+    && realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url))) {
   try {
     if (process.argv.length!==2 || !process.env.GITHUB_EVENT_PATH) throw new Error('Use GitHub event file; no CLI arguments');
+    if (!process.env.GITHUB_STEP_SUMMARY) throw new Error('GITHUB_STEP_SUMMARY is required');
     const report=collectReport(process.cwd(),process.env.GITHUB_EVENT_NAME,JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')));
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY,summaryMarkdown(report));
     // JSON escapes control characters in untrusted file names; never shell-evaluate paths.
     console.log(JSON.stringify(report));
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,summaryMarkdown(report));
   } catch(error) {
     console.error(`Protected change detection failed: ${JSON.stringify(error.message)}`);
     process.exitCode=1;
