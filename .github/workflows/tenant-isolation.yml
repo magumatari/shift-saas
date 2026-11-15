@@ -45,3 +45,9 @@ jobs:
 
       - name: Test local workerd and SQLite isolation
         run: npm run test:runtime
+
+      - name: Test regression CI boundary with isolated fixtures
+        run: node --test test/guard-ci.test.mjs
+
+      - name: Test adopted guard regressions with count checks
+        run: node scripts/check-guard-regression.mjs
