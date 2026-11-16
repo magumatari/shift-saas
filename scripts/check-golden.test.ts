@@ -194,6 +194,36 @@ test('the existing root README and canonical Schema are not examples', async () 
 test('existing assignment IDs can be referenced by violations', async () => {
   await withCase(c => { c.input.existing_assignments=[c.assignments.shift()]; }, async dir => assert.deepEqual((await checkGolden(dir)).errors, []));
 });
+const employeeMismatch = (id: string, employee = 'E1') => `expected/violations/0: assignment ${id} employee must match violation employee ${employee}`;
+const wrongEmployeeReferences: [string, (c: Fixture) => void, string[]][] = [
+  ['violation employee', c => { c.expected.violations[0].employee='E2'; }, [employeeMismatch('A1','E2'),employeeMismatch('A2','E2')]],
+  ['first candidate', c => { c.assignments[0].employee='E2'; }, [employeeMismatch('A1')]],
+  ['second candidate', c => { c.assignments[1].employee='E2'; }, [employeeMismatch('A2')]],
+  ['first existing', c => { c.assignments[0].employee='E2'; c.input.existing_assignments=[c.assignments.shift()]; }, [employeeMismatch('A1')]],
+  ['second existing', c => { c.assignments[1].employee='E2'; c.input.existing_assignments=[c.assignments.pop()]; }, [employeeMismatch('A2')]],
+  ['unknown ID alongside mismatch', c => { c.expected.violations[0].assignments[0]='A9'; c.assignments[1].employee='E2'; }, ['expected/violations/0: unknown assignment A9',employeeMismatch('A2')]],
+  ['duplicate ID across sources', c => { c.input.existing_assignments=[{...c.assignments[0],employee:'E2'}]; }, ['duplicate assignment id',employeeMismatch('A1')]],
+];
+for (const [name, change, errors] of wrongEmployeeReferences) test(`REST_SHORTAGE employee reference: rejects ${name}`, async () => {
+  await withCase(c => {
+    c.input.employees.push({...c.input.employees[0],id:'E2'});
+    c.input.coverage.records_complete[0].employees.push('E2');
+    change(c);
+  }, async dir => assert.deepEqual((await checkGolden(dir)).errors,errors.map(error => `case.json: ${error}`)));
+});
+const validEmployeeReferences: [string, (c: Fixture) => void][] = [
+  ['second existing', c => { c.input.existing_assignments=[c.assignments.pop()]; }],
+  ['both existing', c => { c.input.existing_assignments=c.assignments; c.assignments=[]; }],
+  ['other store', c => { c.input.stores.push({id:'S2'}); c.assignments[1].store='S2'; }],
+  ['reversed order without quantities', c => {
+    c.assignments.reverse(); c.expected.violations[0].assignments.reverse();
+    for (const key of ['measured','limit','comparison','diff','unit']) delete c.expected.violations[0][key];
+    assert.equal(c.status,'draft'); assert.equal(c.approved_by,null); assert.equal(c.approved_at,null);
+  }],
+];
+for (const [name, change] of validEmployeeReferences) test(`REST_SHORTAGE employee reference: accepts ${name}`, async () => {
+  await withCase(change, async dir => assert.deepEqual((await checkGolden(dir)).errors,[]));
+});
 test('rule lists are sets and all integrated rules can be represented', async () => {
   await withCase(c => {
     c.target_rules=['H10','H11']; c.expected.evaluated_rules=['H11','H10']; c.expected.rule_results.H11='PASS';

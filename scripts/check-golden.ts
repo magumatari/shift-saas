@@ -167,6 +167,10 @@ export function semanticErrors(c: Case): string[] {
     if (!employees.has(violation.employee)) errors.push(`expected/violations/${i}: unknown employee ${violation.employee}`);
     for (const id of violation.assignments) {
       if (!assignmentIds.has(id)) errors.push(`expected/violations/${i}: unknown assignment ${id}`);
+      // Duplicate IDs remain errors above; inspect every match rather than hiding one.
+      else if (violation.code === 'REST_SHORTAGE' && assignments.some(a => a.id === id && a.employee !== violation.employee)) {
+        errors.push(`expected/violations/${i}: assignment ${id} employee must match violation employee ${violation.employee}`);
+      }
     }
   }
   return errors;
