@@ -1,5 +1,25 @@
 # H10 専用型検査・77件のCI接続候補
 
+## 採用後の確認記録（2026-11-16）
+
+本人が [PR #14](https://github.com/magumatari/shift-saas/pull/14) を merge `93d271a70c18cefa86d5cf89757c7478ec453e1e` で採用し、その後 [PR #17](https://github.com/magumatari/shift-saas/pull/17) を merge `3fad027e5d38c8620cc5f59600c727140984b765` で採用しました。以下は後者を main として担当CodexがGitHub API・実ジョブログを直接確認した固定時点の記録です。以後の採用状態は各PRとmainを確認します。
+
+現行workflowのPR対象は `main` のみで、opened/synchronize/reopened/editedを維持し、pushもmainのみです。親ブランチ向けの一時triggerはPR #17で整理済みです。親へのpushや他base向けPRを対象に追加したわけではありません。
+
+| main push CI | run / job | 実結果 |
+| --- | --- | --- |
+| H10 | [43937021355](https://github.com/magumatari/shift-saas/actions/runs/43937021355) / 133544183399 | 専用型検査・補助39件・UTC77件/Los Angeles77件 |
+| golden | [43937021386](https://github.com/magumatari/shift-saas/actions/runs/43937021386) / 133544183024 | 型検査・root128件・golden2例/エラー0 |
+| tenant | [43937021360](https://github.com/magumatari/shift-saas/actions/runs/43937021360) / 133544183581 | 型検査・unit14/runtime8/補助runner試験48/guard30/実guard68 |
+
+全runは `event=push`、branchはmain、headと各jobの実checkoutは `3fad027e5d38c8620cc5f59600c727140984b765`、completed/successです。全fail/cancelled/skipped/todoは0でした。PR仮マージ・旧stack CI・作者ローカル試験の成功を、このmain pushの実績へ読み替えたものではありません。独立静的監査もCIの実行証拠とは別です。
+
+専用CIへの接続・本人採用は、正式Validatorや一般REST_SHORTAGE照合の完成、goldenの正式承認を意味しません。必須check/rulesetの現在設定はこの確認で取得・変更しておらず、CI成功を必須化の証拠にはしません。補助39件自身の件数guardなし、待機run置換、実timeout/出力上限・孫プロセス・Windows/macOS等の限界と、PR #1の各期限は下記のままです。
+
+## 以下はPR #14の制作・監査時点の履歴
+
+以下に残す「未採用」「親ブランチの一時的なPR対象の整理は未実施」やroot98等は、初版と監査修正時点の記録です。現在の採用・trigger・件数は上の固定時点の記録と区別してください。過去の手順・検証範囲・未検証事項は削除しません。
+
 PR #13 の監査済み固定head `e3ec555a27552685c49ecd37eb979c5fb950bd16` を親とする、別の未採用候補です。起点mainは `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`。採用・監査・実行の固定headと最新状態は対応PRを参照します。PR #13 の静的監査を、この追加コードの監査に流用しません。
 
 初版の追加は専用workflow、この説明、CLI runnerとその隔離試験の4ファイルです。PR #14の第1回監査修正では、この説明と親READMEの時点注記だけを更新します。H10本体/77試験/専用tsconfig、root package/lockfile、既存golden/tenant CI、共通parser/reporterと採用済みguard/pinは変更しません。親READMEの「既存CIに未接続」は親候補の時点の記録です。本候補のworkflowが実行できたこと、mainへの本人採用、製品/正式Validatorへの採用は別です。
