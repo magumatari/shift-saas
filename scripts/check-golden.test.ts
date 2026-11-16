@@ -79,6 +79,9 @@ const bad: [string, (c: Fixture) => void, RegExp][] = [
   ['INDETERMINATE without reasons', c => { c.expected.result = 'INDETERMINATE'; c.expected.violations = []; }, /indeterminate/],
   ['partial quantities', c => { delete c.expected.violations[0].unit; }, /unit/],
   ['wrong diff', c => { c.expected.violations[0].diff = 1; }, /diff must equal/],
+  ['REST_SHORTAGE limit above company setting', c => { c.expected.violations[0].limit=1201; c.expected.violations[0].diff=-2; }, /REST_SHORTAGE limit must match input\/company\/min_rest_minutes/],
+  ['REST_SHORTAGE limit below company setting', c => { c.input.company.min_rest_minutes=1201; }, /REST_SHORTAGE limit must match input\/company\/min_rest_minutes/],
+  ['REST_SHORTAGE limit with explicit zero company setting', c => { c.input.company.min_rest_minutes=0; }, /REST_SHORTAGE limit must match input\/company\/min_rest_minutes/],
   ['wrong rule', c => { c.expected.violations[0].rule = 'H11'; }, /constant/],
   ['wrong violation code', c => { c.expected.violations[0].code = 'OTHER'; }, /constant/],
   ['one violation assignment', c => { c.expected.violations[0].assignments.pop(); }, /assignments/],
@@ -223,6 +226,23 @@ const validEmployeeReferences: [string, (c: Fixture) => void][] = [
 ];
 for (const [name, change] of validEmployeeReferences) test(`REST_SHORTAGE employee reference: accepts ${name}`, async () => {
   await withCase(change, async dir => assert.deepEqual((await checkGolden(dir)).errors,[]));
+});
+const validRestLimits: [string, (c: Fixture) => void][] = [
+  ['matching non-default setting', () => {}],
+  ['existing assignment', c => { c.input.existing_assignments=[c.assignments.shift()]; }],
+  ['other store', c => { c.input.stores.push({id:'S2'}); c.assignments[1].store='S2'; }],
+  ['reversed references', c => { c.assignments.reverse(); c.expected.violations[0].assignments.reverse(); }],
+  ['all quantities omitted', c => { for (const key of ['measured','limit','comparison','diff','unit']) delete c.expected.violations[0][key]; }],
+  ['undecided without expected', c => { c.status='undecided'; delete c.expected; }],
+];
+for (const [name, change] of validRestLimits) test(`REST_SHORTAGE company limit: accepts ${name}`, async () => {
+  await withCase(c => {
+    c.input.company.min_rest_minutes=1201;
+    c.expected.violations[0].limit=1201;
+    c.expected.violations[0].diff=-2;
+    change(c);
+    assert.equal(c.approved_by,null); assert.equal(c.approved_at,null);
+  }, async dir => assert.deepEqual(await checkGolden(dir),{count:1,errors:[]}));
 });
 test('rule lists are sets and all integrated rules can be represented', async () => {
   await withCase(c => {
