@@ -21,10 +21,9 @@ function hasNonBlankId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function hasOwnUserId(value: unknown): value is { ownUserId: string } {
+function hasOwnUserId(value: unknown): value is { ownUserId: unknown } {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    && Object.hasOwn(value, "ownUserId")
-    && hasNonBlankId((value as { ownUserId?: unknown }).ownUserId);
+    && Object.hasOwn(value, "ownUserId");
 }
 
 // One invocation models one request; companyId is the sole routing input.
@@ -35,10 +34,12 @@ export async function accessCompany<Id>(
 ): Promise<ProbeResult> {
   const user = await dependencies.resolveCurrentUser();
   if (!hasOwnUserId(user)) return { kind: "unauthenticated" };
+  const ownUserId = user.ownUserId;
+  if (!hasNonBlankId(ownUserId)) return { kind: "unauthenticated" };
   if (!hasNonBlankId(companyId)) return { kind: "not_member" };
 
   // Do not cache this result, derive a DO ID, or obtain a stub before it succeeds.
-  if ((await dependencies.isActiveMember(user.ownUserId, companyId)) !== true) {
+  if ((await dependencies.isActiveMember(ownUserId, companyId)) !== true) {
     return { kind: "not_member" };
   }
 

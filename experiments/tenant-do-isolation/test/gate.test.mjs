@@ -148,3 +148,61 @@ test("mock: non-2xx DO responses propagate errors without retry or a successful 
     ]).flat());
   }
 });
+
+function sessionAccessor(f, getter) {
+  f.deps.resolveCurrentUser = async () => {
+    f.events.push(["session"]);
+    return Object.defineProperty({}, "ownUserId", { get: getter });
+  };
+}
+
+test("mock identity snapshot: a changing getter cannot switch the membership identity", async () => {
+  for (const operation of ["read", "write"]) {
+    const f = fixture(memoryNamespace());
+    let reads = 0;
+    sessionAccessor(f, () => ++reads === 1 ? "fictional-own-user-alice" : "fictional-own-user-multi");
+    const result = await (operation === "read" ? f.read(f.companyB) : f.write(f.companyB, "attack"));
+    assert.deepEqual(result, { kind: "not_member" });
+    assert.equal(reads, 1);
+    assert.deepEqual(f.events, [["session"], ["membership", "fictional-own-user-alice", f.companyB], ["membership:resolved", false]]);
+    assertNoObjectAccess(f.events);
+  }
+});
+
+test("mock identity snapshot: a stable own getter remains accepted and is read once", async () => {
+  for (const operation of ["read", "write"]) {
+    const f = fixture(memoryNamespace());
+    let reads = 0;
+    sessionAccessor(f, () => { reads++; return "fictional-own-user-alice"; });
+    const result = await (operation === "read" ? f.read(f.companyA) : f.write(f.companyA, "stable"));
+    assert.deepEqual(result, { kind: "ok", value: operation === "read" ? "" : "stable" });
+    assert.equal(reads, 1);
+    assert.deepEqual(f.events.filter(([event]) => event === "membership"), [["membership", "fictional-own-user-alice", f.companyA]]);
+  }
+});
+
+test("mock identity snapshot: an invalid first value does not retry the getter", async () => {
+  for (const operation of ["read", "write"]) {
+    const f = fixture(memoryNamespace());
+    let reads = 0;
+    sessionAccessor(f, () => ++reads === 1 ? null : "fictional-own-user-multi");
+    const result = await (operation === "read" ? f.read(f.companyB) : f.write(f.companyB, "attack"));
+    assert.deepEqual(result, { kind: "unauthenticated" });
+    assert.equal(reads, 1);
+    assert.deepEqual(f.events, [["session"]]);
+    assertNoObjectAccess(f.events);
+  }
+});
+
+test("mock identity snapshot: a getter exception still stops before membership or DO access", async () => {
+  for (const operation of ["read", "write"]) {
+    const f = fixture(memoryNamespace());
+    const failure = new Error("synthetic identity getter failure");
+    let reads = 0;
+    sessionAccessor(f, () => { reads++; throw failure; });
+    await assert.rejects(operation === "read" ? f.read(f.companyA) : f.write(f.companyA, "attack"), error => error === failure);
+    assert.equal(reads, 1);
+    assert.deepEqual(f.events, [["session"]]);
+    assertNoObjectAccess(f.events);
+  }
+});
