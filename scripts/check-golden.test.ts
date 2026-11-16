@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, symlink, unlink, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -13,17 +13,33 @@ type Fixture = typeof fail;
 function documentExample(doc: string) {
   return JSON.parse(doc.replace(/\r\n/g, '\n').split('```json\n')[1].split('\n```')[0]);
 }
-async function withCase(change: (c: Fixture) => void, run: (dir: string) => Promise<void>): Promise<void> {
+async function clearWorkspace(workspace: string, links: string[], unlinkLink = unlink, removeTree = rm): Promise<void> {
+  // Remove only links created by this fixture before any recursive deletion.
+  // If inspection/unlink fails, throw and leave the workspace for inspection.
+  for (const link of [...links].reverse()) {
+    assert.equal(dirname(link),workspace);
+    assert.ok((await lstat(link)).isSymbolicLink(),'Refuse cleanup of changed fixture link');
+    await unlinkLink(link);
+  }
+  await removeTree(workspace, { recursive:true, force:true });
+}
+type MakeLink = (target: string, path: string) => Promise<void>;
+async function withCase(change: (c: Fixture) => void, run: (dir: string, makeLink: MakeLink) => Promise<void>): Promise<void> {
   const workspace = await mkdtemp(join(tmpdir(), 'golden-test-'));
   const dir = join(workspace,'golden');
+  const links: string[]=[];
+  const makeLink: MakeLink = async (target,path) => {
+    assert.equal(dirname(path),workspace);
+    await symlink(target,path,'junction');links.push(path);
+  };
   try {
     await mkdir(dir);
     await mkdir(join(dir, 'schema'));
     await copyFile('golden/schema/golden-case.schema.json', join(dir, 'schema/golden-case.schema.json'));
     const c = structuredClone(fail); change(c);
     await writeFile(join(dir, 'case.json'), JSON.stringify(c));
-    await run(dir);
-  } finally { await rm(workspace, { recursive: true, force: true }); }
+    await run(dir,makeLink);
+  } finally { await clearWorkspace(workspace,links); }
 }
 test('both draft examples pass format checks and FAIL matches the document', async () => {
   const result = await checkGolden('golden');
@@ -309,14 +325,14 @@ function runNode(args: string[]) {
 
 for (const alias of [false, true]) for (const valid of [true, false]) {
   test(`CLI ${alias ? 'directory alias' : 'regular entry'} ${valid ? 'checks one valid case' : 'rejects one invalid case'}`, async () => {
-    await withCase(c => { if (!valid) c.id=''; }, async dir => {
+    await withCase(c => { if (!valid) c.id=''; }, async (dir,makeLink) => {
       // OS-native diagnostic paths, including spaces/Unicode, stay unchanged.
       const name='架空 例.json';
       await copyFile(join(dir,'case.json'),join(dir,name));await rm(join(dir,'case.json'));
       let entry=checkerPath;
       if (alias) {
         const link=join(dirname(dir),'入口 空白');
-        await symlink(fileURLToPath(new URL('./',import.meta.url)),link,'junction');
+        await makeLink(fileURLToPath(new URL('./',import.meta.url)),link);
         entry=join(link,'check-golden.ts');
       }
       const r=runNode([entry,dir]);
@@ -345,9 +361,9 @@ for (const context of ['no argv','unrelated entry','missing argv path','checker 
   });
 }
 
-for (const validEntry of [true,false]) {
-  test(`older-minor entry fallback ${validEntry ? 'resolves directory alias' : 'handles resolution error'}`, async () => {
-    await withCase(()=>{},async dir=>{
+for (const context of ['CLI alias','missing argv','unrelated argv']) {
+  test(`older-minor entry fallback ${context}`, async () => {
+    await withCase(()=>{},async (dir,makeLink)=>{
       // Simulate absence of the Node >=24.2 flag in this copy only; this is
       // not a claim that an older Node or native Windows was executed.
       const source=await readFile(checkerPath,'utf8');
@@ -355,18 +371,66 @@ for (const validEntry of [true,false]) {
       const workspace=dirname(dir);
       const file=join(workspace,'fallback.ts');await writeFile(file,copy);
       await writeFile(join(workspace,'package.json'),'{"type":"module"}');
-      await symlink(join(projectRoot,'node_modules'),join(workspace,'node_modules'),'junction');
+      await makeLink(join(projectRoot,'node_modules'),join(workspace,'node_modules'));
       let r;
-      if(validEntry) {
-        const link=join(workspace,'fallback alias');await symlink(workspace,link,'junction');
+      if(context==='CLI alias') {
+        const link=join(workspace,'fallback alias');await makeLink(workspace,link);
         r=runNode([join(link,'fallback.ts'),dir]);
         assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'Checked 1 golden cases; 0 error(s).\n');assert.equal(r.stderr,'');
       } else {
-        const code=`process.argv=[process.execPath,${JSON.stringify(join(dir,'missing-entry.ts'))}];await import(${JSON.stringify(pathToFileURL(file).href)});`;
+        const argv=context==='missing argv' ? join(dir,'missing-entry.ts') : fileURLToPath(import.meta.url);
+        const code=`process.argv=[process.execPath,${JSON.stringify(argv)}];await import(${JSON.stringify(pathToFileURL(file).href)});`;
         r=runNode(['--input-type=module','-e',code]);
-        assert.equal(r.status,1);assert.match(r.stderr,/ENOENT.*missing-entry\.ts/);
-        assert.equal(r.stdout,'');assert.doesNotMatch(r.stderr,/\n\s+at |unhandled/i);
+        assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'');assert.equal(r.stderr,'');
       }
     });
   });
 }
+
+test('fallback missing argv import preserves existing exitCode',async()=>{
+  await withCase(()=>{},async(dir,makeLink)=>{
+    const workspace=dirname(dir);const file=join(workspace,'fallback.ts');
+    const source=await readFile(checkerPath,'utf8');const copy=source.replace('import.meta.main ??','undefined ??');assert.notEqual(source,copy);
+    await writeFile(file,copy);await writeFile(join(workspace,'package.json'),'{"type":"module"}');
+    await makeLink(join(projectRoot,'node_modules'),join(workspace,'node_modules'));
+    const code=`process.exitCode=7;process.argv=[process.execPath,${JSON.stringify(join(dir,'missing.ts'))}];await import(${JSON.stringify(pathToFileURL(file).href)});`;
+    const r=runNode(['--input-type=module','-e',code]);assert.equal(r.status,7);assert.equal(r.stdout,'');assert.equal(r.stderr,'');
+  });
+});
+
+test('fixture cleanup unlinks external directory before removing workspace',async()=>{
+  const external=await mkdtemp(join(tmpdir(),'golden-external-'));
+  try {
+    await writeFile(join(external,'sentinel'),'external target unchanged');
+    let workspace='';
+    await withCase(()=>{},async(dir,makeLink)=>{
+      workspace=dirname(dir);await makeLink(external,join(workspace,'external alias'));
+    });
+    await assert.rejects(lstat(workspace),{code:'ENOENT'});
+    assert.equal(await readFile(join(external,'sentinel'),'utf8'),'external target unchanged');
+  } finally { await rm(external,{recursive:true,force:true}); }
+});
+
+test('fixture cleanup stops before recursive removal on unlink failure',async()=>{
+  const workspace=await mkdtemp(join(tmpdir(),'golden-cleanup-'));
+  const target=await mkdtemp(join(tmpdir(),'golden-cleanup-target-'));const link=join(workspace,'alias');
+  try {
+    await writeFile(join(target,'sentinel'),'unchanged');await symlink(target,link,'junction');
+    let recursiveRemoval=false;
+    await assert.rejects(clearWorkspace(workspace,[link],async()=>{throw new Error('synthetic unlink failure');},async()=>{recursiveRemoval=true;}),/synthetic unlink failure/);
+    assert.equal(recursiveRemoval,false);assert.ok((await lstat(workspace)).isDirectory());
+    assert.equal(await readFile(join(target,'sentinel'),'utf8'),'unchanged');
+  } finally {
+    // If unlink fails, the following recursive operations are not reached.
+    await unlink(link);await rm(workspace,{recursive:true,force:true});await rm(target,{recursive:true,force:true});
+  }
+});
+
+test('fixture cleanup refuses a recorded path replaced by a directory',async()=>{
+  const workspace=await mkdtemp(join(tmpdir(),'golden-cleanup-changed-'));const path=join(workspace,'alias');
+  try {
+    await mkdir(path);let recursiveRemoval=false;
+    await assert.rejects(clearWorkspace(workspace,[path],unlink,async()=>{recursiveRemoval=true;}),/Refuse cleanup/);
+    assert.equal(recursiveRemoval,false);assert.ok((await lstat(path)).isDirectory());
+  } finally { await rm(workspace,{recursive:true,force:true}); }
+});

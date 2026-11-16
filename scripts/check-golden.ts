@@ -217,11 +217,19 @@ export async function checkGolden(directory: string): Promise<{ count: number; e
   return { count, errors };
 }
 
+// Legacy argv matching cannot distinguish an import with spoofed checker argv.
+// An unresolvable argv is not evidence of CLI execution: leave imports alone.
+async function legacyEntryMatches(): Promise<boolean> {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return import.meta.url === pathToFileURL(await realpath(resolve(process.argv[1]))).href;
+  } catch {
+    return false;
+  }
+}
+
 try {
-  // Node >=24.2 identifies the entry even through symlinks; keep the original
-  // Node 24 range usable with a realpath fallback for older minor versions.
-  const isCli = import.meta.main ?? (process.argv[1] !== undefined
-    && import.meta.url === pathToFileURL(await realpath(resolve(process.argv[1]))).href);
+  const isCli = import.meta.main ?? await legacyEntryMatches();
   if (isCli) {
     const result = await checkGolden(process.argv[2] ?? 'golden');
     for (const error of result.errors) console.error(error);
