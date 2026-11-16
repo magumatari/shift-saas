@@ -73,6 +73,6 @@ TZ=UTC node --import tsx --test experiments/h10-rest-analysis/rest-analysis.test
 TZ=America/Los_Angeles node --import tsx --test experiments/h10-rest-analysis/rest-analysis.test.ts
 ```
 
-既存root型検査はscriptsだけ、既存npm testはchecker試験だけを対象にするため、**この実験の型検査・テストは既存CIに未接続**です。既存CI成功を実験の実行証拠にしません。件数・固定head・各終了値・一時コピーだけの故障注入対照は対応PRの作者記録に分け、独立Claude Code静的監査とは区別します。
+親PR #13の固定版 `e3ec555a27552685c49ecd37eb979c5fb950bd16` 時点では、既存root型検査はscriptsだけ、既存npm testはchecker試験だけを対象とし、この実験の型検査・テストはCI未接続でした。後続PR #14では、専用型検査とUTC/Los Angeles各77件をguardする専用CIを別候補として実行しています。実行範囲・stack依存・採用条件は [CI接続提案](ci-proposal.md) と対応PRの固定head記録を参照してください。候補CIの成功をmain採用や製品/正式Validatorへの採用と読み替えず、作者実行・CI・独立Claude Code静的監査を区別します。
 
 未対応のJSON/禁止並び、記録欠損と未計画の区別、完全性・適用期間別設定、正式違反の過不足/偽PASS、実認証/製品経路/本番は残ります。PR #1の例拡張前の一般REST_SHORTAGE整合、正式golden運用前の保護・本人確認、Windows検証前の対応期限は解消しません。既存のH10 2例はdraft/承認nullのままです。Dotsが固定版の初回独立監査を手配し、作者は起動しません。修正後再監査は最大2回、同じ指摘2回は本人判断、採用・golden承認・マージは本人だけが行います。
