@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, mkdir, copyFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { validateGuardCiRun } from '../scripts/check-guard-ci.mjs';
 
@@ -63,6 +63,24 @@ async function fixture(t, source, options={}) {
   let entry=join(dir,'scripts/check-guard-ci.mjs');
   if(options.link==='file'){const link=join(dir,'entry.mjs');await symlink(entry,link);entry=link;}
   if(options.link==='directory'){const link=join(dir,'linked-scripts');await symlink(join(dir,'scripts'),link);entry=join(link,'check-guard-ci.mjs');}
+  if(options.childNodeOptions) {
+    const preload=join(dir,'harmless-preload.cjs');
+    await writeFile(preload,"process.env.SHIFT_HELPER_PRELOAD='loaded';\n");
+    const nodeOptions=`--require ${preload}`;
+    delete env.NODE_OPTIONS;delete env.SHIFT_HELPER_PRELOAD;
+    // The isolated launcher starts without NODE_OPTIONS. Set it only after
+    // startup so this probes the runner's child boundary, not launcher startup.
+    const launcher=`import assert from 'node:assert/strict';
+      assert.equal(process.env.SHIFT_HELPER_PRELOAD,undefined);
+      process.env.NODE_OPTIONS=${JSON.stringify(nodeOptions)};
+      process.argv=[process.execPath,${JSON.stringify(entry)}];
+      await import(${JSON.stringify(pathToFileURL(entry).href)});
+      assert.equal(process.env.NODE_OPTIONS,${JSON.stringify(nodeOptions)});
+      assert.equal(process.env.SHIFT_HELPER_PRELOAD,undefined);`;
+    return completed(spawnSync(process.execPath,['--input-type=module','-e',launcher],{
+      cwd:dir,env,encoding:'utf8',timeout:10_000,maxBuffer:1024*1024,
+    }));
+  }
   const args=options.bare?['--test',join(dir,'test/guard-ci.test.mjs')]:[entry,...(options.args??[])];
   return completed(spawnSync(process.execPath,args,{cwd:dir,env,encoding:'utf8',timeout:10_000,maxBuffer:1024*1024}));
 }
@@ -82,7 +100,7 @@ for(const [name,source,options,reason,detail] of [
   ['early exit0',tests(30)+'process.exit(0);',{},countsFailure],
   ['syntax error','! invalid syntax !',{},processFailure,/SyntaxError/],
   ['CLI override',tests(30),{args:['--minimum','1']},/Guard CI tests failed: No arguments accepted/],
-  ['environment override',tests(29),{env:{GUARD_CI_MINIMUM:'1',GUARD_CI_FILE:'other.test.mjs'}},countsFailure],
+  ['unrecognized runner-specific variables',tests(29),{env:{GUARD_CI_MINIMUM:'1',GUARD_CI_FILE:'other.test.mjs'}},countsFailure],
   ['no reporter summary',tests(30),{reporter:reporter('')},/Guard CI tests failed: Missing or incomplete machine summary/],
   ['duplicate reporter summaries',tests(30),{reporter:reporter(encoded(summary())+encoded(summary()))},/Guard CI tests failed: Unexpected.*JSON/],
   ['incomplete reporter summary',tests(30),{reporter:reporter(encoded(summary()).slice(0,-1))},/Guard CI tests failed: Missing or incomplete machine summary/],
@@ -90,6 +108,23 @@ for(const [name,source,options,reason,detail] of [
   const r=await fixture(t,source,options);assert.equal(r.status,1,r.stderr);
   assert.doesNotMatch(r.stdout,/PASS/);assert.match(r.stderr,reason);
   if(detail)assert.match(r.stderr,detail);
+});
+test('Node v24.22.1 accepts the harmless NODE_OPTIONS preload',async t=>{
+  assert.equal(process.version,'v24.22.1');
+  const dir=await mkdtemp(join(tmpdir(),'shift-node-options-control-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const preload=join(dir,'harmless-preload.cjs');
+  await writeFile(preload,"process.env.SHIFT_HELPER_PRELOAD='loaded';\n");
+  const env={...process.env,NODE_OPTIONS:`--require ${preload}`};
+  delete env.NODE_TEST_CONTEXT;delete env.SHIFT_HELPER_PRELOAD;
+  const r=completed(spawnSync(process.execPath,['-e',"process.stdout.write(process.env.SHIFT_HELPER_PRELOAD??'missing')"],{env,encoding:'utf8',timeout:10_000}));
+  assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'loaded');
+});
+test('child boundary strips NODE_OPTIONS set after parent startup',async t=>{
+  const source=`import test from 'node:test';import assert from 'node:assert/strict';
+    for(let i=0;i<30;i++)test('synthetic '+i,()=>assert.equal(process.env.SHIFT_HELPER_PRELOAD,undefined,'synthetic child inherited NODE_OPTIONS'));`;
+  const r=await fixture(t,source,{childNodeOptions:true});
+  assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/guard-ci: PASS minimum=30/);
 });
 for(const link of ['file','directory']) {
   test(`symlink ${link} starts 30 completions`,async t=>{

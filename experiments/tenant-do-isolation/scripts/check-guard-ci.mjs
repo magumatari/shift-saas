@@ -15,6 +15,7 @@ try {
     if (process.argv.length !== 2) throw new Error('No arguments accepted');
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
+    delete env.NODE_OPTIONS;
     const result = spawnSync(process.execPath, [
       '--test',
       `--test-reporter=${fileURLToPath(new URL('./test-summary-reporter.mjs', import.meta.url))}`,
