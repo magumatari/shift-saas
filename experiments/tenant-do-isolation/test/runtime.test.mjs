@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { stripTypeScriptTypes } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Miniflare } from "miniflare";
 import { assertNoObjectAccess, fixture } from "./fixtures.mjs";
@@ -157,4 +159,71 @@ test("workerd boundary: unknown company/user and empty or missing IDs never reac
 test("workerd: public Worker endpoint exposes no probe or test login", async () => {
   const response = await mf.dispatchFetch("https://probe.invalid/value");
   assert.equal(response.status, 404);
+});
+
+test("workerd SQLite persistence: runtime recreation preserves tenant values and storage roots stay separate", async () => {
+  const source = await readFile(new URL("../src/company-object.ts", import.meta.url), "utf8");
+  const directory = await mkdtemp(join(tmpdir(), "shift-probe-restart-"));
+  const persistDirectory = join(directory, "original");
+  let live;
+  async function open(storageDirectory) {
+    live = new Miniflare({
+      modules: true,
+      script: stripTypeScriptTypes(source),
+      compatibilityDate: "2026-07-30",
+      durableObjects: { COMPANIES: { className: "ProbeCompanyObject", useSQLite: true } },
+      durableObjectsPersist: storageDirectory,
+      outboundService: () => { throw new Error("Outbound network forbidden in this probe"); },
+      host: "127.0.0.1",
+      port: 0,
+    });
+    const ns = await live.getDurableObjectNamespace("COMPANIES");
+    const f = fixture(ns, "persisted");
+    f.signIn("fictional-own-user-multi");
+    return { f, ids: [ns.idFromName(f.companyA).toString(), ns.idFromName(f.companyB).toString()] };
+  }
+  async function close() {
+    await live?.dispose();
+    live = undefined;
+  }
+  try {
+    const first = await open(persistDirectory);
+    assert.notEqual(first.ids[0], first.ids[1]);
+    assert.deepEqual(await first.f.write(first.f.companyA, "persisted A"), { kind: "ok", value: "persisted A" });
+    assert.deepEqual(await first.f.write(first.f.companyB, "persisted B"), { kind: "ok", value: "persisted B" });
+    await close();
+
+    // Fresh Miniflare, namespace, stubs and fixture: no JS marker map is reused.
+    const second = await open(persistDirectory);
+    assert.deepEqual(second.ids, first.ids);
+    assert.deepEqual(await second.f.read(second.f.companyA), { kind: "ok", value: "persisted A" }, "A survives first runtime recreation");
+    assert.deepEqual(await second.f.read(second.f.companyB), { kind: "ok", value: "persisted B" }, "B survives first runtime recreation");
+    assert.deepEqual(await second.f.write(second.f.companyA, "updated A"), { kind: "ok", value: "updated A" });
+    assert.deepEqual(await second.f.read(second.f.companyB), { kind: "ok", value: "persisted B" });
+    await close();
+
+    const third = await open(persistDirectory);
+    assert.deepEqual(third.ids, first.ids);
+    assert.deepEqual(await third.f.read(third.f.companyA), { kind: "ok", value: "updated A" }, "A update survives second runtime recreation");
+    assert.deepEqual(await third.f.read(third.f.companyB), { kind: "ok", value: "persisted B" });
+    third.f.memberships.get("fictional-own-user-multi").delete(third.f.companyA);
+    third.f.clearEvents();
+    assert.deepEqual(await third.f.read(third.f.companyA), { kind: "not_member" });
+    assert.deepEqual(await third.f.write(third.f.companyA, "attack"), { kind: "not_member" });
+    assertNoObjectAccess(third.f.events);
+    assert.deepEqual(await third.f.read(third.f.companyB), { kind: "ok", value: "persisted B" });
+    third.f.signIn("fictional-own-user-alice");
+    assert.deepEqual(await third.f.read(third.f.companyA), { kind: "ok", value: "updated A" });
+    await close();
+
+    // Same logical IDs, different fresh test-only directory: no inherited data.
+    const separate = await open(join(directory, "separate"));
+    assert.deepEqual(separate.ids, first.ids);
+    assert.deepEqual(await separate.f.read(separate.f.companyA), { kind: "ok", value: "" }, "fresh storage root starts empty for A");
+    assert.deepEqual(await separate.f.read(separate.f.companyB), { kind: "ok", value: "" }, "fresh storage root starts empty for B");
+  } finally {
+    // If disposal fails, do not delete a directory still used by the runtime.
+    await close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
