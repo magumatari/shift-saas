@@ -266,6 +266,18 @@ for (const [name, change] of validRestLimits) test(`REST_SHORTAGE company limit:
     assert.equal(c.approved_by,null); assert.equal(c.approved_at,null);
   }, async dir => assert.deepEqual(await checkGolden(dir),{count:1,errors:[]}));
 });
+for (const unit of ['minutes','days','people','assignments']) {
+  test(`REST_SHORTAGE unit: ${unit === 'minutes' ? 'accepts' : 'rejects'} ${unit}`, async () => {
+    await withCase(c => {
+      // All values, IDs, approval state and quantities are otherwise identical.
+      c.expected.violations[0].unit=unit;
+      assert.equal(c.status,'draft');assert.equal(c.approved_by,null);assert.equal(c.approved_at,null);
+    },async dir=>assert.deepEqual(await checkGolden(dir),{
+      count:1,
+      errors:unit==='minutes' ? [] : ['case.json: expected/violations/0: REST_SHORTAGE unit must be minutes'],
+    }));
+  });
+}
 test('rule lists are sets and all integrated rules can be represented', async () => {
   await withCase(c => {
     c.target_rules=['H10','H11']; c.expected.evaluated_rules=['H11','H10']; c.expected.rule_results.H11='PASS';
