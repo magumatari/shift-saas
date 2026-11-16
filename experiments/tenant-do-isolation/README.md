@@ -2,7 +2,15 @@
 
 `docs/decisions.md` の「リクエストごとに所属を照合してから、その企業の DO だけを開く」を小さく検証する、製品コードから独立した試験です。架空企業・架空ユーザーと、意味を持たない文字列の保存だけを扱います。業務 API、認証機能、所属のデータモデル、業務データのスキーマを実装・確定するものではありません。
 
-## 状態と確認記録（PR #10・2026-11-16）
+## 採用後の追記（2026-11-16・main `08cf67e`）
+
+- 補助30件の件数検査は [PR #12](https://github.com/magumatari/shift-saas/pull/12) の head `f1311f7b298c7f0bb2f7fb7f525e2bd93de7df94` を本人が merge `ee992d79be349249d89449456f6f3dc90d0d1f95` で採用しました。現在の CI は `node scripts/check-guard-ci.mjs` から実30件を実行し、下限30・正常終了・最終summary・全件pass・fail/cancelled/skipped/todo 0を要求します。runner の隔離試験48件は別ステップで、その48件自身の件数guardはありません。詳細と限界は [helper-count-proposal.md](./helper-count-proposal.md) を参照してください。
+- getter二重読取は [PR #20](https://github.com/magumatari/shift-saas/pull/20) の head `ae8914b83daed2845acdf4dc26f5ca7c7f81bf3f` を本人が 2026-11-16 21:12:49 UTC に merge `08cf67e8359240c285d6d1078167125970c6647e` で採用しました。own property の形状確認後にIDを一度だけ読み、検査した同じ値で所属照会します。read/write双方のgetter4ケースはモック試験であり、実Better Auth・任意Proxy・実認証の保証ではありません。実workerdの既存8件とは区別します。
+- PR #20 固定版の独立Codex静的監査はPASS、Critical/High/Medium/Low各0とのDotsからの引継ぎです。監査者はbase/head・差分・fixtureを独立取得しましたが、型検査・試験・旧版負の対照は再実行していません。Claude監査は今回未実施で、Dotsは次の分離機能のまとまりで手配する扱いとしました。Claude監査済みやリリース承認を意味しません。
+- 担当CodexがAPI・実ジョブログで確認した同merge SHAの **push/main** は、[tenant run43957757416](https://github.com/magumatari/shift-saas/actions/runs/43957757416)（型検査・unit18/runtime8・runner隔離48・guard30/68）、[golden run43957757432](https://github.com/magumatari/shift-saas/actions/runs/43957757432)（型検査・root133/golden2例エラー0）、[H10 run43957757479](https://github.com/magumatari/shift-saas/actions/runs/43957757479)（専用型検査・補助39・UTC/Los Angeles各77）が全てsuccessです。全実checkoutは `08cf67e8359240c285d6d1078167125970c6647e`、fail/cancelled/skipped/todoは0でした。PR仮マージや静的監査者の実行ではありません。
+- unitの実行数は18ですが機械的下限は14のままです。新4件の存在を下限18で強制してはいません。後掲のunit14・補助30件非強制・getter未修正という記述はPR #10以前の履歴です。今回の追記でコード・テスト・CI・下限・pinは変更しません。孫プロセス清掃、実認証/製品経路、並行競合、本番等の限界やPR #1の各期限を解消したとは扱いません。
+
+## 過去の状態と確認記録（PR #10・2026-11-16）
 
 - 実験本体の [PR #2](https://github.com/magumatari/shift-saas/pull/2) は、head `69f7d3d5339b589d6ca1a8c86fb62a872dd8de7e` の Claude Code 静的再監査 `SHIFT-PR2-20261113-AUDIT02` を経て、本人が merge `f6fdbed2205bdc35c415cc7b3771ba39f5c96f96` で試作として受け入れました。P2 全 5 件は解消、getter 境界の low 指摘は別枠で残っています。監査者がテストを実行したという意味ではありません。
 - 専用 CI の [PR #3](https://github.com/magumatari/shift-saas/pull/3) は、head `f6302d33d436ae6ab1d32fbf397db06821f9ed05` を本人が merge `d569571b753dd30b462a1ac3dacc1a6f79391499` で main に採用済みです。2026-11-15 に Dots から受領した、PR #3 採用後の設定・遮断検証の引継ぎ記録では、[protect-main ruleset 27210513](https://github.com/magumatari/shift-saas/rules/27210513) は active、bypass なし、必須 check は `tenant-isolation`、`golden-check` は非必須とされていました。担当 Codex は PR #10（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）で同設定をライブ再取得していません。設定の原票・取得時刻は本 README に保存しておらず、この本文だけでは追跡できません。
@@ -59,7 +67,7 @@ node --test test/guard-regression.test.mjs
 | runtime | 8 | 同版 runtime.test.mjs。SQLite 5 件、DO 到達ゼロ 2 件、公開入口 404 の 1 件 |
 | guard 回帰 | 68 | PR #5 の回帰ファイルを PR #7 の check-guard-regression.mjs で起動し、同じ最終累計を別の下限68で検査 |
 
-補助試験 `node --test test/guard-ci.test.mjs` の実績は30件ですが、このステップ自体には件数・skip／todoを機械強制する集計 guard はありません。終了コードの確認と作者／Dots のログ・内容照合に依存する限界を残します。実 guard68件の下限・skip／todo拒否とは別です。
+PR #7／#10 時点では、補助試験 `node --test test/guard-ci.test.mjs` の実績は30件ですが、このステップ自体には件数・skip／todoを機械強制する集計 guard はありません。終了コードの確認と作者／Dots のログ・内容照合に依存する限界を残していました。実 guard68件の下限・skip／todo拒否とは別です。PR #12 採用後の入口と48件自身の限界は冒頭の追記を参照してください。
 
 入力値を回すループ内の各ケースは別件に数えません。runner は、子プロセス終了 0・signal／起動エラーなし・最終 summary が正常・passed=tests・件数が下限以上・failed/cancelled/skipped/todo がすべて 0、を要求します。不正／欠損／複数レコード、パース不能、型不正、テスト起動不能、テスト自身の非ゼロ終了も非ゼロにします。子プロセスには 120 秒の上限、workflow 全体には 10 分の上限があります。
 
@@ -127,6 +135,8 @@ PR #2 第 1 回修正は P2 の 5 項目に対応しました。未知・空の 
 この PR #2 修正版の独立再監査と本人による試作受入れは完了しました。当時は CI 接続と必須化を別の採用条件として残しました。その後の達成状況は冒頭を参照してください。PR #2 単独の受入れが製品経路の完成や P1 の技術的解消を意味したわけではありません。
 
 ## 未決・未検証と次の判断
+
+以下はPR #10時点の一覧です。補助30件のguardとgetter二重読取の後続採用は冒頭を参照してください。他の項目の採用状態は対応PRで確認し、この文書追従だけで未検証事項や正式golden運用・例拡張前・Windows検証前の条件を解消しません。
 
 - 現行 main に Better Auth・D1・業務 Worker の実装がないため、実セッションの検証、自社ユーザー ID との対応付け、実 D1 の所属テーブル・クエリ、所属無効化の反映遅延は未検証です。Better Auth を自作の認証方式で置き換えていません。
 - 実際の API 入力形式・エラー応答、企業 ID の正規化、ロール／店舗単位の権限、運営代理アクセスは本検証で決めません。
