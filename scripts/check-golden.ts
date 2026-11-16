@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Ajv2020 } from 'ajv/dist/2020.js';
@@ -217,14 +217,18 @@ export async function checkGolden(directory: string): Promise<{ count: number; e
   return { count, errors };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  try {
+try {
+  // Node >=24.2 identifies the entry even through symlinks; keep the original
+  // Node 24 range usable with a realpath fallback for older minor versions.
+  const isCli = import.meta.main ?? (process.argv[1] !== undefined
+    && import.meta.url === pathToFileURL(await realpath(resolve(process.argv[1]))).href);
+  if (isCli) {
     const result = await checkGolden(process.argv[2] ?? 'golden');
     for (const error of result.errors) console.error(error);
     console.log(`Checked ${result.count} golden cases; ${result.errors.length} error(s).`);
     process.exitCode = result.errors.length ? 1 : 0;
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
   }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 }
