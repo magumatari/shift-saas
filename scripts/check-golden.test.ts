@@ -156,6 +156,25 @@ const bad: [string, (c: Fixture) => void, RegExp][] = [
 for (const [name, change, error] of bad) test(name, async () => {
   await withCase(change, async dir => assert.match((await checkGolden(dir)).errors.join('\n'), error));
 });
+const assignmentDatePaths: [string, (c: Fixture) => void, string[]][] = [
+  ['candidate keeps its own index', c => { c.assignments[1].start_date='2026-02-30'; }, ['/assignments/1/start_date']],
+  ['first existing follows candidates', c => { c.input.existing_assignments=[{...c.assignments[0],id:'A3',start_date:'2026-02-30'}]; }, ['/input/existing_assignments/0/start_date']],
+  ['second existing without candidates', c => { c.input.existing_assignments=c.assignments; c.assignments=[]; c.input.existing_assignments[1].start_date='2026-02-30'; }, ['/input/existing_assignments/1/start_date']],
+  ['both sources retain order and local indexes', c => {
+    c.input.existing_assignments=[{...c.assignments[0],id:'A3'},{...c.assignments[1],id:'A4',start_date:'2026-02-30'}];
+    c.assignments[1].start_date='2026-02-30';
+  }, ['/assignments/1/start_date','/input/existing_assignments/1/start_date']],
+];
+for (const [name, change, paths] of assignmentDatePaths) test(`assignment date diagnostics: ${name}`, async () => {
+  await withCase(change, async dir => assert.deepEqual(await checkGolden(dir),{
+    count:1,errors:paths.map(path=>`case.json: ${path}: nonexistent date 2026-02-30`),
+  }));
+});
+test('assignment date diagnostics: valid candidate and existing dates stay accepted', async () => {
+  await withCase(c => { c.input.existing_assignments=[c.assignments.shift()]; }, async dir => {
+    assert.deepEqual(await checkGolden(dir),{count:1,errors:[]});
+  });
+});
 test('quantity fields may all be absent, valid leap day and adjacent work are allowed', async () => {
   await withCase(c => {
     for (const k of ['measured','limit','comparison','diff','unit']) delete c.expected.violations[0][k];

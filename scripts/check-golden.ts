@@ -88,7 +88,8 @@ export function semanticErrors(c: Case): string[] {
       if (c[key] !== undefined && c[key] !== null) errors.push(`${c.status}/${key}: unapproved value must be null`);
     }
   }
-  [...c.assignments, ...c.input.existing_assignments].forEach((a, i) => dates(a.start_date, `/assignments/${i}/start_date`));
+  c.assignments.forEach((a, i) => dates(a.start_date, `/assignments/${i}/start_date`));
+  c.input.existing_assignments.forEach((a, i) => dates(a.start_date, `/input/existing_assignments/${i}/start_date`));
   c.expected?.violations.forEach((v, i) => {
     dates(v.from, `/expected/violations/${i}/from`);
     dates(v.to, `/expected/violations/${i}/to`);
