@@ -50,6 +50,7 @@ type Case = {
     violations: {
       rule: string; code: string; employee: string; assignments: string[];
       from: string; to: string; measured?: number; limit?: number; diff?: number; comparison?: '<=' | '>=';
+      unit?: 'minutes' | 'days' | 'people' | 'assignments';
     }[];
     indeterminate: unknown[];
   };
@@ -100,6 +101,7 @@ export function semanticErrors(c: Case): string[] {
       if (v.comparison === '<=' && !(v.measured > v.limit!)) errors.push(`expected/violations/${i}: upper-bound violation requires measured > limit (positive diff)`);
       if (v.code === 'REST_SHORTAGE' && v.comparison !== '>=') errors.push(`expected/violations/${i}: REST_SHORTAGE comparison must be >=`);
       if (v.code === 'REST_SHORTAGE' && v.limit !== c.input.company.min_rest_minutes) errors.push(`expected/violations/${i}: REST_SHORTAGE limit must match input/company/min_rest_minutes`);
+      if (v.code === 'REST_SHORTAGE' && v.unit !== 'minutes') errors.push(`expected/violations/${i}: REST_SHORTAGE unit must be minutes`);
     }
   }
   if (c.expected) {
