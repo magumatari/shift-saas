@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeRest, type PairEvidence } from './rest-analysis.ts';
+import { analyzeRest, type Assignment, type PairEvidence } from './rest-analysis.ts';
 
 // Fictional records; literal expectations below come from the README's arithmetic.
 // No golden expected values, Solver output or implementation-generated oracle.
@@ -177,3 +177,29 @@ for(const [name,change,reason] of [
   const c=fixture();change(c);const r=analyzeRest(c);assert.equal(r.kind,'not-analyzed');
   if(r.kind==='not-analyzed'){assert.equal(r.category,'unsupported');assert.match(r.explanation,reason);assert.equal('pairs' in r,false);}
 });
+
+// Category priority is experimental: malformed records precede unsupported math.
+// Literal expected categories do not depend on the implementation's output.
+const prioritySeed=fixture();
+const far: Assignment={...prioritySeed.assignments[0],id:'FAR',start_date:'9999-12-31'};
+const priorityCauses: [string,Assignment[],RegExp][]=[
+  ['unknown employee',[{...prioritySeed.assignments[0],id:'BAD',employee:'E9'}],/unknown employee/],
+  ['duplicate id',[{...prioritySeed.assignments[0],id:'DUP'},{...prioritySeed.assignments[1],id:'DUP'}],/duplicate id/],
+];
+for(const [cause,bad,reason] of priorityCauses){
+  const front=[far,...bad],back=[...bad,far];
+  const layouts: [string,readonly Assignment[],readonly Assignment[]][]=[
+    ['candidate forward',front,[]],['candidate reverse',back,[]],
+    ['existing forward',[],front],['existing reverse',[],back],
+    ['cross unsupported first',bad.length===2?[far,bad[0]]:[far],bad.length===2?[bad[1]]:bad],
+    ['cross precondition first',bad.length===2?[bad[0]]:bad,bad.length===2?[bad[1],far]:[far]],
+  ];
+  for(const [layout,assignments,existing_assignments] of layouts)test(`classification priority: ${cause} / ${layout}`,()=>{
+    const r=analyzeRest({...fixture(),assignments,existing_assignments});
+    assert.equal(r.kind,'not-analyzed');
+    if(r.kind==='not-analyzed'){
+      assert.equal(r.category,'precondition','mixed causes must retain precondition priority');
+      assert.match(r.explanation,reason);assert.equal('pairs' in r,false);
+    }
+  });
+}

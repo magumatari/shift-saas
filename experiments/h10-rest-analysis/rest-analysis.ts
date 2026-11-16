@@ -74,6 +74,8 @@ export function analyzeRest(value: unknown): Analysis {
   type Resolved = { evidence: ShiftEvidence; employee: string; startDate: string; start: number; end: number };
   const groups = new Map([...employees].map(employee => [employee, [] as Resolved[]]));
   const assignmentIds = new Set<string>();
+  const prepared: { assignment: Assignment; source: 'candidate' | 'existing'; start: number; duration: number }[] = [];
+  // Finish every record's shape/reference/date checks before unsupported arithmetic.
   for (const [key, source] of [['assignments','candidate'], ['existing_assignments','existing']] as const) {
     for (const a of value[key] as unknown[]) {
       if (!exact(a, ['id','employee','store','pattern','start_date']) || !id(a.id)
@@ -86,14 +88,20 @@ export function analyzeRest(value: unknown): Analysis {
       if (!p) return rejected(`assignment ${a.id}: unknown pattern reference`);
       const start = startMinute(a.start_date, p.start);
       if (start === undefined) return rejected(`assignment ${a.id}: invalid local date`);
-      const end = start + p.duration;
-      const startJst = jst(start), endJst = Number.isSafeInteger(end) ? jst(end) : undefined;
-      if (startJst === undefined || endJst === undefined) return rejected(`assignment ${a.id}: date arithmetic outside four-digit-year range`, 'unsupported');
-      groups.get(a.employee)!.push({
-        employee: a.employee, startDate: a.start_date as string, start, end,
-        evidence: { id:a.id, source, store:a.store, pattern:a.pattern, startJst, endJst },
+      prepared.push({
+        assignment: { id:a.id, employee:a.employee, store:a.store, pattern:a.pattern, start_date:a.start_date as string },
+        source, start, duration:p.duration,
       });
     }
+  }
+  for (const { assignment:a, source, start, duration } of prepared) {
+    const end = start + duration;
+    const startJst = jst(start), endJst = Number.isSafeInteger(end) ? jst(end) : undefined;
+    if (startJst === undefined || endJst === undefined) return rejected(`assignment ${a.id}: date arithmetic outside four-digit-year range`, 'unsupported');
+    groups.get(a.employee)!.push({
+      employee: a.employee, startDate: a.start_date, start, end,
+      evidence: { id:a.id, source, store:a.store, pattern:a.pattern, startJst, endJst },
+    });
   }
   const pairs: PairEvidence[] = [], unpairedEmployees: string[] = [];
   for (const employee of [...employees].sort(compareIds)) {
