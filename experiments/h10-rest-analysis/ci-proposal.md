@@ -2,7 +2,7 @@
 
 PR #13 の監査済み固定head `e3ec555a27552685c49ecd37eb979c5fb950bd16` を親とする、別の未採用候補です。起点mainは `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`。採用・監査・実行の固定headと最新状態は対応PRを参照します。PR #13 の静的監査を、この追加コードの監査に流用しません。
 
-追加は専用workflow、この説明、CLI runnerとその隔離試験の4ファイルだけです。H10本体/77試験/専用tsconfig、root package/lockfile、既存golden/tenant CI、共通parser/reporterと採用済みguard/pinは変更しません。親READMEの「既存CIに未接続」は親候補の時点の記録です。本候補のworkflowが実行できたこと、mainへの本人採用、製品/正式Validatorへの採用は別です。
+初版の追加は専用workflow、この説明、CLI runnerとその隔離試験の4ファイルです。PR #14の第1回監査修正では、この説明と親READMEの時点注記だけを更新します。H10本体/77試験/専用tsconfig、root package/lockfile、既存golden/tenant CI、共通parser/reporterと採用済みguard/pinは変更しません。親READMEの「既存CIに未接続」は親候補の時点の記録です。本候補のworkflowが実行できたこと、mainへの本人採用、製品/正式Validatorへの採用は別です。
 
 ## 実行範囲
 
@@ -23,6 +23,12 @@ CLI runnerは引数を受けず、同じ固定 `rest-analysis.test.ts` を実際
 PR対象は `main` と親ブランチ `experiment/h10-rest-pairs-20261116` です。親が未マージのstacked PRでも新jobを検証するため、後者を明示的に含めます。opened/synchronize/reopened/editedを対象とし、base変更時も検査対象にします。pushはmainだけです。パス条件、成功扱いskip、continue-on-error、モックへの置換、pull_request_target、秘密/write権限はありません。
 
 他のbase向けPR、feature/親ブランチへのpushだけでは新workflowは実行されません。既存tenantはmain向けPR限定なので、親向けstackでは実行されません。既存goldenはPRのbase制限がないため実行対象です。これらの未実行を成功とは扱いません。本人が親 #13 を先に採用し、その後この候補のbaseをmainへ変更して同じhead/baseのCIを確認する必要があります。今回は親PRやbaseを変更しません。#10/#11/#12/#8への実装依存はありません。
+
+親ブランチの一時的なPR対象の整理は未実施です。現在のstack検証を保つため、この文書修正ではworkflowを変更しません。整理は次の順で別途行います。
+
+1. 本人が親 #13 を採用・マージし、本候補のbaseをmainへ変更した後、その時点の同じhead/baseに対する新H10・既存golden/tenant CIの実行と結果を確認する。親向けの成功やretarget前の成功で代用しない。
+2. 本人による本候補の保護変更採用・マージ後、別の限定PRで `.github/workflows/h10-rest-analysis.yml` のPR対象から `experiment/h10-rest-pairs-20261116` だけを除き、main向けPR/push等を維持する案を用意する。別の依存PRが親向け検証を必要としていないことも確認する。
+3. 整理候補も保護対象変更として固定headの独立Claude Code監査と同じhead/baseのCI確認を経て、本人が差分を確認して採用・マージする。採用後のmain push結果も確認する。親の採用やbase変更だけで自動削除・自動採用されたとは扱わない。
 
 concurrency groupはworkflow名・event名・refで分離し、PRだけ進行中の同一対象を取り消します。別PRやmain pushを混同せず、後続pushで進行中mainを取り消しません。ただし同じgroupの待機run置換・実行順序の制約は残り、全mainコミットの実行保証ではありません。これはGitHubの[branch filter](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpull_requestpull_request_targetbranchesbranches-ignore)と[concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)の仕様に基づく設定案で、実運用の取消/待機競合は今回再現していません。
 
