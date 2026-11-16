@@ -1,29 +1,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, symlink, unlink, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { checkGolden, parseJson } from './check-golden.ts';
 
 const failPath = 'golden/H10/H10-rest-1199min-fail.json';
 const fail = JSON.parse(await readFile(failPath, 'utf8'));
 type Fixture = typeof fail;
-async function withCase(change: (c: Fixture) => void, run: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), 'golden-test-'));
+function documentExample(doc: string) {
+  return JSON.parse(doc.replace(/\r\n/g, '\n').split('```json\n')[1].split('\n```')[0]);
+}
+async function clearWorkspace(workspace: string, links: string[], unlinkLink = unlink, removeTree = rm): Promise<void> {
+  // Remove only links created by this fixture before any recursive deletion.
+  // If inspection/unlink fails, throw and leave the workspace for inspection.
+  for (const link of [...links].reverse()) {
+    assert.equal(dirname(link),workspace);
+    assert.ok((await lstat(link)).isSymbolicLink(),'Refuse cleanup of changed fixture link');
+    await unlinkLink(link);
+  }
+  await removeTree(workspace, { recursive:true, force:true });
+}
+type MakeLink = (target: string, path: string) => Promise<void>;
+async function withCase(change: (c: Fixture) => void, run: (dir: string, makeLink: MakeLink) => Promise<void>): Promise<void> {
+  const workspace = await mkdtemp(join(tmpdir(), 'golden-test-'));
+  const dir = join(workspace,'golden');
+  const links: string[]=[];
+  const makeLink: MakeLink = async (target,path) => {
+    assert.equal(dirname(path),workspace);
+    await symlink(target,path,'junction');links.push(path);
+  };
   try {
+    await mkdir(dir);
     await mkdir(join(dir, 'schema'));
     await copyFile('golden/schema/golden-case.schema.json', join(dir, 'schema/golden-case.schema.json'));
     const c = structuredClone(fail); change(c);
     await writeFile(join(dir, 'case.json'), JSON.stringify(c));
-    await run(dir);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+    await run(dir,makeLink);
+  } finally { await clearWorkspace(workspace,links); }
 }
 test('both draft examples pass format checks and FAIL matches the document', async () => {
   const result = await checkGolden('golden');
   assert.deepEqual(result, { count: 2, errors: [] });
   const doc = await readFile('docs/hard-rules.md', 'utf8');
-  assert.deepEqual(fail, JSON.parse(doc.split('```json\n')[1].split('\n```')[0]));
+  assert.deepEqual(fail, documentExample(doc));
   const pass = JSON.parse(await readFile('golden/H10/H10-rest-1200min-pass.json', 'utf8'));
   const changedInput = structuredClone(fail.input); changedInput.patterns[1].start = '02:00';
   assert.deepEqual(pass.input, changedInput);
@@ -180,7 +202,7 @@ for (const extension of ['JSON', 'Json', 'json5', 'jsonc', 'json.bak', 'yaml', '
       await copyFile(join(dir,'case.json'),join(dir,'nested',name));
       const result=await checkGolden(dir);
       assert.equal(result.count,1);
-      assert.deepEqual(result.errors,[`nested/${name}: unsupported golden case file; only .json is supported`]);
+      assert.deepEqual(result.errors,[`${join('nested',name)}: unsupported golden case file; only .json is supported`]);
       if (extension==='JSON') {
         const cli=spawnSync(process.execPath,['--import','tsx','scripts/check-golden.ts',dir],{encoding:'utf8'});
         assert.equal(cli.status,1); assert.match(cli.stderr,/extra\.JSON: unsupported golden case file/);
@@ -278,4 +300,137 @@ test('duplicate JSON keys fail through the file loader', async () => {
     await writeFile(join(dir,'case.json'), '{"id":"first","id":"second"}');
     assert.match((await checkGolden(dir)).errors.join('\n'), /duplicate JSON key/);
   });
+});
+
+for (const eol of ['\n', '\r\n']) {
+  test(`document JSON fence accepts ${JSON.stringify(eol)}`, () => {
+    const doc = ['synthetic', '```json', '{"probe":"架空"}', '```', ''].join(eol);
+    assert.deepEqual(documentExample(doc), { probe:'架空' });
+  });
+}
+
+const checkerPath = fileURLToPath(new URL('./check-golden.ts', import.meta.url));
+const projectRoot = fileURLToPath(new URL('../', import.meta.url));
+function runNode(args: string[]) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  delete env.NODE_OPTIONS;
+  const r = spawnSync(process.execPath, ['--import', 'tsx', ...args], {
+    cwd:projectRoot, env, encoding:'utf8', timeout:10_000, maxBuffer:1024*1024,
+  });
+  assert.equal(r.error, undefined, 'Harness launch/timeout is not a successful rejection');
+  assert.equal(r.signal, null);
+  return r;
+}
+
+for (const alias of [false, true]) for (const valid of [true, false]) {
+  test(`CLI ${alias ? 'directory alias' : 'regular entry'} ${valid ? 'checks one valid case' : 'rejects one invalid case'}`, async () => {
+    await withCase(c => { if (!valid) c.id=''; }, async (dir,makeLink) => {
+      // OS-native diagnostic paths, including spaces/Unicode, stay unchanged.
+      const name='架空 例.json';
+      await copyFile(join(dir,'case.json'),join(dir,name));await rm(join(dir,'case.json'));
+      let entry=checkerPath;
+      if (alias) {
+        const link=join(dirname(dir),'入口 空白');
+        await makeLink(fileURLToPath(new URL('./',import.meta.url)),link);
+        entry=join(link,'check-golden.ts');
+      }
+      const r=runNode([entry,dir]);
+      assert.equal(r.status, valid ? 0 : 1, r.stderr);
+      assert.equal(r.stdout, `Checked 1 golden cases; ${valid ? 0 : 1} error(s).\n`);
+      if(valid)assert.equal(r.stderr,'');
+      else assert.match(r.stderr,new RegExp(`${name}: .*minLength|${name}: .*fewer than 1`));
+    });
+  });
+}
+
+for (const context of ['no argv','unrelated entry','missing argv path','checker argv']) {
+  test(`library import has no CLI output: ${context}`, async () => {
+    await withCase(()=>{},async dir=>{
+      const prelude=context==='no argv' ? 'process.argv=[process.execPath];'
+        : context==='unrelated entry' ? `process.argv=[process.execPath,${JSON.stringify(fileURLToPath(import.meta.url))}];`
+        : context==='missing argv path' ? `process.argv=[process.execPath,${JSON.stringify(join(dir,'missing.ts'))}];`
+        : `process.argv=[process.execPath,${JSON.stringify(checkerPath)}];`;
+      const code=`import assert from 'node:assert/strict';${prelude}
+        process.argv[2]=${JSON.stringify(dir)};
+        const m=await import(${JSON.stringify(pathToFileURL(checkerPath).href)});
+        assert.equal(typeof m.checkGolden,'function');assert.equal(typeof m.parseJson,'function');`;
+      const r=runNode(['--input-type=module','-e',code]);
+      assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'');assert.equal(r.stderr,'');
+    });
+  });
+}
+
+for (const context of ['CLI alias','missing argv','unrelated argv']) {
+  test(`older-minor entry fallback ${context}`, async () => {
+    await withCase(()=>{},async (dir,makeLink)=>{
+      // Simulate absence of the Node >=24.2 flag in this copy only; this is
+      // not a claim that an older Node or native Windows was executed.
+      const source=await readFile(checkerPath,'utf8');
+      const copy=source.replace('import.meta.main ??','undefined ??');assert.notEqual(copy,source);
+      const workspace=dirname(dir);
+      const file=join(workspace,'fallback.ts');await writeFile(file,copy);
+      await writeFile(join(workspace,'package.json'),'{"type":"module"}');
+      await makeLink(join(projectRoot,'node_modules'),join(workspace,'node_modules'));
+      let r;
+      if(context==='CLI alias') {
+        const link=join(workspace,'fallback alias');await makeLink(workspace,link);
+        r=runNode([join(link,'fallback.ts'),dir]);
+        assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'Checked 1 golden cases; 0 error(s).\n');assert.equal(r.stderr,'');
+      } else {
+        const argv=context==='missing argv' ? join(dir,'missing-entry.ts') : fileURLToPath(import.meta.url);
+        const code=`process.argv=[process.execPath,${JSON.stringify(argv)}];await import(${JSON.stringify(pathToFileURL(file).href)});`;
+        r=runNode(['--input-type=module','-e',code]);
+        assert.equal(r.status,0,r.stderr);assert.equal(r.stdout,'');assert.equal(r.stderr,'');
+      }
+    });
+  });
+}
+
+test('fallback missing argv import preserves existing exitCode',async()=>{
+  await withCase(()=>{},async(dir,makeLink)=>{
+    const workspace=dirname(dir);const file=join(workspace,'fallback.ts');
+    const source=await readFile(checkerPath,'utf8');const copy=source.replace('import.meta.main ??','undefined ??');assert.notEqual(source,copy);
+    await writeFile(file,copy);await writeFile(join(workspace,'package.json'),'{"type":"module"}');
+    await makeLink(join(projectRoot,'node_modules'),join(workspace,'node_modules'));
+    const code=`process.exitCode=7;process.argv=[process.execPath,${JSON.stringify(join(dir,'missing.ts'))}];await import(${JSON.stringify(pathToFileURL(file).href)});`;
+    const r=runNode(['--input-type=module','-e',code]);assert.equal(r.status,7);assert.equal(r.stdout,'');assert.equal(r.stderr,'');
+  });
+});
+
+test('fixture cleanup unlinks external directory before removing workspace',async()=>{
+  const external=await mkdtemp(join(tmpdir(),'golden-external-'));
+  try {
+    await writeFile(join(external,'sentinel'),'external target unchanged');
+    let workspace='';
+    await withCase(()=>{},async(dir,makeLink)=>{
+      workspace=dirname(dir);await makeLink(external,join(workspace,'external alias'));
+    });
+    await assert.rejects(lstat(workspace),{code:'ENOENT'});
+    assert.equal(await readFile(join(external,'sentinel'),'utf8'),'external target unchanged');
+  } finally { await rm(external,{recursive:true,force:true}); }
+});
+
+test('fixture cleanup stops before recursive removal on unlink failure',async()=>{
+  const workspace=await mkdtemp(join(tmpdir(),'golden-cleanup-'));
+  const target=await mkdtemp(join(tmpdir(),'golden-cleanup-target-'));const link=join(workspace,'alias');
+  try {
+    await writeFile(join(target,'sentinel'),'unchanged');await symlink(target,link,'junction');
+    let recursiveRemoval=false;
+    await assert.rejects(clearWorkspace(workspace,[link],async()=>{throw new Error('synthetic unlink failure');},async()=>{recursiveRemoval=true;}),/synthetic unlink failure/);
+    assert.equal(recursiveRemoval,false);assert.ok((await lstat(workspace)).isDirectory());
+    assert.equal(await readFile(join(target,'sentinel'),'utf8'),'unchanged');
+  } finally {
+    // If unlink fails, the following recursive operations are not reached.
+    await unlink(link);await rm(workspace,{recursive:true,force:true});await rm(target,{recursive:true,force:true});
+  }
+});
+
+test('fixture cleanup refuses a recorded path replaced by a directory',async()=>{
+  const workspace=await mkdtemp(join(tmpdir(),'golden-cleanup-changed-'));const path=join(workspace,'alias');
+  try {
+    await mkdir(path);let recursiveRemoval=false;
+    await assert.rejects(clearWorkspace(workspace,[path],unlink,async()=>{recursiveRemoval=true;}),/Refuse cleanup/);
+    assert.equal(recursiveRemoval,false);assert.ok((await lstat(path)).isDirectory());
+  } finally { await rm(workspace,{recursive:true,force:true}); }
 });

@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Ajv2020 } from 'ajv/dist/2020.js';
@@ -217,14 +217,26 @@ export async function checkGolden(directory: string): Promise<{ count: number; e
   return { count, errors };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Legacy argv matching cannot distinguish an import with spoofed checker argv.
+// An unresolvable argv is not evidence of CLI execution: leave imports alone.
+async function legacyEntryMatches(): Promise<boolean> {
+  if (process.argv[1] === undefined) return false;
   try {
+    return import.meta.url === pathToFileURL(await realpath(resolve(process.argv[1]))).href;
+  } catch {
+    return false;
+  }
+}
+
+try {
+  const isCli = import.meta.main ?? await legacyEntryMatches();
+  if (isCli) {
     const result = await checkGolden(process.argv[2] ?? 'golden');
     for (const error of result.errors) console.error(error);
     console.log(`Checked ${result.count} golden cases; ${result.errors.length} error(s).`);
     process.exitCode = result.errors.length ? 1 : 0;
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
   }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 }
