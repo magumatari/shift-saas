@@ -1,0 +1,44 @@
+name: H10 rest analysis
+
+on:
+  pull_request:
+    branches: [main, experiment/h10-rest-pairs-20261116]
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  h10-rest-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          architecture: x64
+          package-manager-cache: false
+
+      - name: Install locked root dependencies
+        run: npm ci --ignore-scripts --no-fund --no-audit
+
+      - name: Typecheck H10 experiment
+        run: node node_modules/typescript/bin/tsc -p experiments/h10-rest-analysis/tsconfig.json
+
+      - name: Test H10 guard with isolated fixtures
+        run: node --test experiments/h10-rest-analysis/check-rest-tests.test.mjs
+
+      - name: Test actual H10 cases in both timezones with count checks
+        run: node experiments/h10-rest-analysis/check-rest-tests.mjs
