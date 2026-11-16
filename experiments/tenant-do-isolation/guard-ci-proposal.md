@@ -1,12 +1,14 @@
 # guard 回帰68件の CI 接続（PR #7 採用記録）
 
+本文はPR #7／#10時点の履歴です。後続の本人採用で、補助30件はPR #12の件数guard経由となり、getter二重読取はPR #20で修正されました。固定head・merge・静的監査とmain push実行の区別は [README](./README.md) 冒頭の「採用後の追記」を参照してください。下記の旧「補助非強制」「getter未修正」は後続採用前の記録であり、履歴本文は保持します。
+
 提案時の起点 main は `0901ae623bb71feffbbeadf86a28822f4c85aee2`。[PR #7](https://github.com/magumatari/shift-saas/pull/7) の固定 head `360224cabb7c7c46677b49271d74f238476c6693` は本人が merge `eaabe5e5361727a9c091931cec527b717e943772` で採用しました。同版の Claude Code 第1回修正後静的再監査 `SHIFT-PR7-20261115-AUDIT02 rev3` は「マージ可」、新規 P0／P1／P2=0、任意 low2（採用後の文書追従）との Dots の原票読取記録です。独立実行試験ではありません。以後も workflow は保護対象で、その変更採用・マージは本人だけが行います。文書追従の採用状態は各 PR と固定 head の監査記録で確認します。
 
 PR #7 は既存の必須 job `tenant-isolation` に補助の隔離試験と68件の実行を別ステップで追加しました。unit14／runtime8、既存 npm scripts、Node `24.22.1`、公式 Actions の固定 SHA、10分上限、read-only 権限、資格情報永続化なし、cache／artifact なし、イベント別 concurrency を維持した採用版です。PR #10 の文書追従（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）でコード・テスト・CI・pin・依存／lockfileは変更しません。
 
 2026-11-16 に確認した main は、本人による [PR #9](https://github.com/magumatari/shift-saas/pull/9) の限定 employee 参照修正も含む `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` です。同 SHA の main push [tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43778189707) は unit14／runtime8・補助30・実 guard68、[golden-check](https://github.com/magumatari/shift-saas/actions/runs/43778189723) は型検査・98件・golden2例エラー0で completed／success、fail／cancelled／skip／todo0。Dots と担当 Codex が API／ジョブログで読み取った実績です。過去の PR #5 時点の「CI 未接続」と区別します。手動コマンドも有効ですが、現在は CI にも接続されています。
 
-実験ディレクトリで:
+PR #7時点の手動実行例（実験ディレクトリで）。直接の `node --test` は現在も実行できますが、採用後のCI入口 `node scripts/check-guard-ci.mjs` の件数検査とは別です:
 
 ```sh
 node --test test/guard-ci.test.mjs
