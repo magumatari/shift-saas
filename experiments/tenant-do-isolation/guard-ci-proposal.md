@@ -2,7 +2,7 @@
 
 提案時の起点 main は `0901ae623bb71feffbbeadf86a28822f4c85aee2`。[PR #7](https://github.com/magumatari/shift-saas/pull/7) の固定 head `360224cabb7c7c46677b49271d74f238476c6693` は本人が merge `eaabe5e5361727a9c091931cec527b717e943772` で採用しました。同版の Claude Code 第1回修正後静的再監査 `SHIFT-PR7-20261115-AUDIT02 rev3` は「マージ可」、新規 P0／P1／P2=0、任意 low2（採用後の文書追従）との Dots の原票読取記録です。独立実行試験ではありません。以後も workflow は保護対象で、その変更採用・マージは本人だけが行います。文書追従の採用状態は各 PR と固定 head の監査記録で確認します。
 
-PR #7 は既存の必須 job `tenant-isolation` に補助の隔離試験と68件の実行を別ステップで追加しました。unit14／runtime8、既存 npm scripts、Node `24.22.1`、公式 Actions の固定 SHA、10分上限、read-only 権限、資格情報永続化なし、cache／artifact なし、イベント別 concurrency を維持した採用版です。今回の文書追従でコード・テスト・CI・pin・依存／lockfileは変更しません。
+PR #7 は既存の必須 job `tenant-isolation` に補助の隔離試験と68件の実行を別ステップで追加しました。unit14／runtime8、既存 npm scripts、Node `24.22.1`、公式 Actions の固定 SHA、10分上限、read-only 権限、資格情報永続化なし、cache／artifact なし、イベント別 concurrency を維持した採用版です。PR #10 の文書追従（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）でコード・テスト・CI・pin・依存／lockfileは変更しません。
 
 2026-11-16 に確認した main は、本人による [PR #9](https://github.com/magumatari/shift-saas/pull/9) の限定 employee 参照修正も含む `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` です。同 SHA の main push [tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43778189707) は unit14／runtime8・補助30・実 guard68、[golden-check](https://github.com/magumatari/shift-saas/actions/runs/43778189723) は型検査・98件・golden2例エラー0で completed／success、fail／cancelled／skip／todo0。Dots と担当 Codex が API／ジョブログで読み取った実績です。過去の PR #5 時点の「CI 未接続」と区別します。手動コマンドも有効ですが、現在は CI にも接続されています。
 
@@ -23,7 +23,7 @@ workflow の補助試験ステップは `node --test` の終了コードを確�
 
 68件と補助の隔離試験は unit 14／runtime 8 に加算しません。件数は意味的な網羅、同数の別テストへの差替え、下限以上が完了した後の早期終了を保証しません。将来の基準引下げ・対象／pin の変更は、理由と失われる範囲を提示して本人の明示判断と別 AI の独立監査が必要です。実認証・製品経路・getter 境界・本番も未検証／未修正のままです。
 
-以後の変更も本人が固定 head・workflow 差分・独立監査・同じ head の CI ログ（`guard-regression: PASS minimum=68` と各失敗件数0）を確認して採用・マージします。PR #7 は既存 check 名を維持して採用済みで、今回の文書追従では ruleset 等の設定を変更しません。PR #1 の正式 golden 運用前／例拡張前／Windows 検証前の期限と H10 draft／承認 null は変えません。PR #9 の employee 帰属照合は一般 H10 照合の完成ではありません。
+以後の変更も本人が固定 head・workflow 差分・独立監査・同じ head の CI ログ（`guard-regression: PASS minimum=68` と各失敗件数0）を確認して採用・マージします。PR #7 は既存 check 名を維持して採用済みで、PR #10 の文書追従（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）では ruleset 等の設定を変更しません。PR #1 の正式 golden 運用前／例拡張前／Windows 検証前の期限と H10 draft／承認 null は変えません。PR #9 の employee 帰属照合は一般 H10 照合の完成ではありません。
 
 初版 head `5c992bcdb47033714e8098b6e8931a6a825f7022` の補助26件と root の型検査・87件・golden2例成功は過去の作者実績です。第1回修正の作者ローカル確認（Linux／Node v24.22.1／npm 11.9.0）では、補助30件、採用済み68件、unit 14／runtime 8、実験の型検査が成功しました。guard／reporter／68件／既存 unit・runtime のバイト不変を起点 main と照合しました。独立監査ではありません。当時の提案 head の Actions と現在 main の実績は、対応 PR／冒頭の記録で区別します。
 
