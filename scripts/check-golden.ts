@@ -33,6 +33,7 @@ type Case = {
   kind: 'unit' | 'integrated';
   target_rules: string[];
   input: {
+    company: { min_rest_minutes: number };
     employees: { id: string; employment: [string, string | null] }[];
     stores: { id: string }[];
     patterns: { id: string; version: number; duration_minutes: number; work: Interval[]; break: Interval[]; cover: Interval[] }[];
@@ -98,6 +99,7 @@ export function semanticErrors(c: Case): string[] {
       if (v.comparison === '>=' && !(v.measured < v.limit!)) errors.push(`expected/violations/${i}: lower-bound violation requires measured < limit (negative diff)`);
       if (v.comparison === '<=' && !(v.measured > v.limit!)) errors.push(`expected/violations/${i}: upper-bound violation requires measured > limit (positive diff)`);
       if (v.code === 'REST_SHORTAGE' && v.comparison !== '>=') errors.push(`expected/violations/${i}: REST_SHORTAGE comparison must be >=`);
+      if (v.code === 'REST_SHORTAGE' && v.limit !== c.input.company.min_rest_minutes) errors.push(`expected/violations/${i}: REST_SHORTAGE limit must match input/company/min_rest_minutes`);
     }
   }
   if (c.expected) {
