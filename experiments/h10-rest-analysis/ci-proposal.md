@@ -1,8 +1,12 @@
 # H10 専用型検査・77件のCI接続候補
 
+題名の「候補」はPR #14制作時の旧題を保持したものです。採用後の状態は次節、旧提案本文は履歴節として区別します。
+
 ## 採用後の確認記録（2026-11-16）
 
 本人が [PR #14](https://github.com/magumatari/shift-saas/pull/14) を merge `93d271a70c18cefa86d5cf89757c7478ec453e1e` で採用し、その後 [PR #17](https://github.com/magumatari/shift-saas/pull/17) を merge `3fad027e5d38c8620cc5f59600c727140984b765` で採用しました。以下は後者を main として担当CodexがGitHub API・実ジョブログを直接確認した固定時点の記録です。以後の採用状態は各PRとmainを確認します。
+
+その前提として、本人は親 [PR #13](https://github.com/magumatari/shift-saas/pull/13) を merge `c41c41c2758a22751f8b8f714831232f6e2e4cd8`（2026-11-16 11:03:49 UTC）で採用済みです。続いてPR #14のbaseをmainへ付け替えた後、head `3e3a96459182ee5135f3da05801d75f0b5e3a509` / base `c41c41c2758a22751f8b8f714831232f6e2e4cd8` の [H10 run43854891260](https://github.com/magumatari/shift-saas/actions/runs/43854891260)、[golden run43854891333](https://github.com/magumatari/shift-saas/actions/runs/43854891333)、[tenant run43854891366](https://github.com/magumatari/shift-saas/actions/runs/43854891366) が成功しました。担当Codexが3jobの実ログでcheckout `f85096747c1977660d9a6aaf6bfe8c8405fb5b2e` を確認し、commit APIでも親がこのbase/headであることを照合しました。これはmain付替え後のPR仮マージCIで、下表の採用後main pushとは別の実績です。
 
 現行workflowのPR対象は `main` のみで、opened/synchronize/reopened/editedを維持し、pushもmainのみです。親ブランチ向けの一時triggerはPR #17で整理済みです。親へのpushや他base向けPRを対象に追加したわけではありません。
 
@@ -13,6 +17,8 @@
 | tenant | [43937021360](https://github.com/magumatari/shift-saas/actions/runs/43937021360) / 133544183581 | 型検査・unit14/runtime8/補助runner試験48/guard30/実guard68 |
 
 全runは `event=push`、branchはmain、headと各jobの実checkoutは `3fad027e5d38c8620cc5f59600c727140984b765`、completed/successです。全fail/cancelled/skipped/todoは0でした。PR仮マージ・旧stack CI・作者ローカル試験の成功を、このmain pushの実績へ読み替えたものではありません。独立静的監査もCIの実行証拠とは別です。
+
+履歴中の「root98・unit14/runtime8・補助30・実68」は当時の表記であり、現行表の内訳として使いません。旧実行の対象集合と現行内訳の一対一対応は、この文書追従では全面照合していません。現行の48件は `test/guard-ci-count.test.mjs` の補助runner試験、guard30は `scripts/check-guard-ci.mjs` が別プロセスで実行・検査する採用済み30件です。両者は現行workflowの別ステップと実ログで区別して確認しており、旧「補助30」を48へ読み替えたり、相互に加算したりする意味ではありません。
 
 専用CIへの接続・本人採用は、正式Validatorや一般REST_SHORTAGE照合の完成、goldenの正式承認を意味しません。必須check/rulesetの現在設定はこの確認で取得・変更しておらず、CI成功を必須化の証拠にはしません。補助39件自身の件数guardなし、待機run置換、実timeout/出力上限・孫プロセス・Windows/macOS等の限界と、PR #1の各期限は下記のままです。
 

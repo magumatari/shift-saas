@@ -66,6 +66,8 @@ ID重複（候補/既存をまたぐ場合も含む）・参照欠落・不正�
 
 rootで、採用済み固定lockfileの依存を使います。新依存・package/lockfile/npm scriptsは追加しません。検証時はNode `v24.22.1`と空の専用npm設定を使い、既存の実.npmrcは取得しません。
 
+次はPOSIX sh向けのローカル実行例です。直接 `node --test` する2行は実験試験を実行しますが、CIが別途実行する補助39件や `check-rest-tests.mjs` の件数・skip/todo等のguardを通しません。CI同等の保証でも、Windows用手順でもありません。
+
 ```sh
 npm ci --ignore-scripts --no-fund --no-audit
 node node_modules/typescript/bin/tsc -p experiments/h10-rest-analysis/tsconfig.json
@@ -79,4 +81,8 @@ TZ=America/Los_Angeles node --import tsx --test experiments/h10-rest-analysis/re
 
 2026-11-16確認時点では、本人がPR #14のCI接続とPR #17の一時親trigger整理を採用済みです。main `3fad027e5d38c8620cc5f59600c727140984b765` のmain pushで専用型検査・補助39件・UTC/Los Angeles各77件が成功し、golden/tenantも同じmainで成功しました。担当CodexによるAPI・実ジョブログの確認記録とrun/jobは [CI接続記録](ci-proposal.md) の冒頭にまとめています。現行PR対象はmainのみ、pushもmainのみです。必須設定の確認・変更や、製品/正式Validatorへの採用を意味しません。
 
+採用経路は、親PR #13を本人が merge `c41c41c2758a22751f8b8f714831232f6e2e4cd8` で採用→PR #14をmainへ付替え後の同一head/baseのH10・golden・tenant CI確認→本人によるPR #14採用→PR #17採用です。各固定SHA・PR向け実checkout・runは上記CI接続記録で追跡でき、親向けstack CIだけを採用条件の証拠にしていません。
+
 未対応のJSON/禁止並び、記録欠損と未計画の区別、完全性・適用期間別設定、正式違反の過不足/偽PASS、実認証/製品経路/本番は残ります。PR #1の例拡張前の一般REST_SHORTAGE整合、正式golden運用前の保護・本人確認、Windows検証前の対応期限は解消しません。既存のH10 2例はdraft/承認nullのままです。Dotsが固定版の初回独立監査を手配し、作者は起動しません。修正後再監査は最大2回、同じ指摘2回は本人判断、採用・golden承認・マージは本人だけが行います。
+
+直前の「初回独立監査を手配」は、親PR #13制作時の引継ぎ文言として残しています。現在も役割は、実装担当Codexが候補作成・作者検証、Dotsが別AIの独立監査を依頼・回収、本人が採用・Ready・マージです。この文書追従自体の監査状態はPR #18の固定版記録を参照し、親実験やCI接続の監査を別の変更へ流用しません。
