@@ -2,14 +2,17 @@
 
 `docs/decisions.md` の「リクエストごとに所属を照合してから、その企業の DO だけを開く」を小さく検証する、製品コードから独立した試験です。架空企業・架空ユーザーと、意味を持たない文字列の保存だけを扱います。業務 API、認証機能、所属のデータモデル、業務データのスキーマを実装・確定するものではありません。
 
-## 現在の状態（2026-11-15 確認）
+## 状態と確認記録（PR #10・2026-11-16）
 
 - 実験本体の [PR #2](https://github.com/magumatari/shift-saas/pull/2) は、head `69f7d3d5339b589d6ca1a8c86fb62a872dd8de7e` の Claude Code 静的再監査 `SHIFT-PR2-20261113-AUDIT02` を経て、本人が merge `f6fdbed2205bdc35c415cc7b3771ba39f5c96f96` で試作として受け入れました。P2 全 5 件は解消、getter 境界の low 指摘は別枠で残っています。監査者がテストを実行したという意味ではありません。
-- 専用 CI の [PR #3](https://github.com/magumatari/shift-saas/pull/3) は、head `f6302d33d436ae6ab1d32fbf397db06821f9ed05` を本人が merge `d569571b753dd30b462a1ac3dacc1a6f79391499` で main に採用済みです。[protect-main ruleset 27210513](https://github.com/magumatari/shift-saas/rules/27210513) は active、bypass なし、必須 check は `tenant-isolation` です。`golden-check` は必須設定されていません。
+- 専用 CI の [PR #3](https://github.com/magumatari/shift-saas/pull/3) は、head `f6302d33d436ae6ab1d32fbf397db06821f9ed05` を本人が merge `d569571b753dd30b462a1ac3dacc1a6f79391499` で main に採用済みです。2026-11-15 に Dots から受領した、PR #3 採用後の設定・遮断検証の引継ぎ記録では、[protect-main ruleset 27210513](https://github.com/magumatari/shift-saas/rules/27210513) は active、bypass なし、必須 check は `tenant-isolation`、`golden-check` は非必須とされていました。担当 Codex は PR #10（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）で同設定をライブ再取得していません。設定の原票・取得時刻は本 README に保存しておらず、この本文だけでは追跡できません。
 - [PR #4](https://github.com/magumatari/shift-saas/pull/4) は **DO NOT MERGE の負の検証用**です。本人承認下で Dots が一時 Ready にし、失敗した必須 `tenant-isolation` によるマージ遮断（blocked）を確認して Draft に戻しました。本人自身がこの検証を実行したわけではありません。この過去の検証は Dots の記録の引継ぎに基づき、担当 Codex が今回行ったのは open／Draft／未マージの読み取りだけで、再検証や状態変更ではありません。PR #3 の旧 P1（必須設定未了）は、本人が行った main 採用・必須設定と、Dots が実施したマージ遮断確認の証拠が揃った状態です。製品経路の完成を意味しません。
 - guard 回帰試験の [PR #5](https://github.com/magumatari/shift-saas/pull/5) は、head `6bd7124c808bed53c17c8602f42a94d5082b9ed8` を本人が 2026-11-15 20:13:35 UTC に merge `dc242e7b1aa4539299da420b609c7a9fa7863fa2` で採用済みです。固定 SHA の Claude Code 静的再監査は範囲限定で採用可、数値検査 P2 と早期終了 low は解消、新規 P0／P1／P2 は 0 との Dots からの引継ぎです。独立実行試験ではありません。継続 low はタイムアウト後の孫プロセス清掃と既存 README の古い進捗の 2 件でした。これは PR #5 監査時点の記録で、README 追従の変更・レビュー・採用状態は [PR #6](https://github.com/magumatari/shift-saas/pull/6) とその監査記録を参照してください。PR #5 の修正→再監査は上限 2 回のうち 1 回を使用しました。
-- main push の SHA `dc242e7b1aa4539299da420b609c7a9fa7863fa2` を対象とする [tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43756856728) と [golden-check](https://github.com/magumatari/shift-saas/actions/runs/43756856753) は、ともに completed／success です。Dots が引継ぎ前に読み取り確認し、担当 Codex も 2026-11-15 に GitHub API から同じ SHA・イベント・結果を読み取り確認しました。Claude Code の静的監査とは別の確認です。**この CI 成功は追加の guard 回帰 68 件を実行した証拠ではありません。68 件は手動実行用で CI 未接続です。**
-- README 追従は 2026-11-15、上記 main SHA を起点に作成し、変更範囲は本 README 1 ファイルだけです。コード・テスト・CI・正本・必須チェック等は変更しません。各固定 head の独立レビュー・本人採用・マージの状態は PR #6 とその監査記録を参照してください。作者確認は独立監査には数えず、PR #3 の追加監査ループも再開しません。
+- PR #5 時点の main push `dc242e7b1aa4539299da420b609c7a9fa7863fa2` の [tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43756856728) と [golden-check](https://github.com/magumatari/shift-saas/actions/runs/43756856753) は completed／success でした。Dots と担当 Codex が読み取り確認した当時の記録です。**この2 run は68件の実行証拠ではなく、当時は手動用・CI 未接続でした。現在の接続は次の PR #7 採用記録と区別します。**
+- [PR #7](https://github.com/magumatari/shift-saas/pull/7) は head `360224cabb7c7c46677b49271d74f238476c6693` を本人が merge `eaabe5e5361727a9c091931cec527b717e943772` で採用済みです。同 SHA の main push [tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43775062472)／[golden-check](https://github.com/magumatari/shift-saas/actions/runs/43775062374) は成功。**68件は CI 接続済み**で、unit14／runtime8、補助30件、実 guard68件は別々の実行です。方式・静的監査と実行の区別は [PR #7 採用記録](./guard-ci-proposal.md) を参照してください。
+- [PR #9](https://github.com/magumatari/shift-saas/pull/9) は head `d27c79ef112ef6f9e7a98bb218df2333f6c53355` を本人が 2026-11-16 00:04:14 UTC に merge `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` で採用しました。REST_SHORTAGE の参照割当と違反 employee の一致だけの修正で、PR #10 起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` における一般の隣接性・端点・実測値・limit・違反過不足・偽 PASS・記録完全性（coverage と割当・記録の照合）を実装したものではありません。固定 head の Claude Code 初回静的監査 `SHIFT-PR9-20261115-AUDIT01 rev1` は条件付き可、新規 P0／P1／P2／low は0、既存の日付エラーパス low は継続との Dots の原票読取からの引継ぎです。独立実行試験ではありません。
+- 確認した main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` の push [golden-check](https://github.com/magumatari/shift-saas/actions/runs/43778189723) は型検査・98件・golden2例エラー0、[tenant-isolation](https://github.com/magumatari/shift-saas/actions/runs/43778189707) は型検査・unit14／runtime8・補助30・実 guard68で completed／success、fail／cancelled／skip／todo は0です。Dots と担当 Codex が API／ジョブログで読み取り確認した実績で、静的監査者の独立実行とは別です。
+- PR #6 の README 追従は 2026-11-15、main `dc242e7b1aa4539299da420b609c7a9fa7863fa2` を起点とした1ファイル変更の履歴です。以後の文書追従の独立レビュー・本人採用・マージ状態も各 PR と固定 head の監査記録で確認してください。PR #10 の文書追従（起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822`）の変更範囲は本 README と guard-ci-proposal.md の2文書だけで、コード・テスト・CI・正本・必須設定は変えません。作者確認は独立監査には数えず、旧 PR の監査ループも再開しません。
 
 ### 過去の CI・監査記録（PR #3）
 
@@ -36,13 +39,13 @@ npm test
 
 書込可能な npm cache の指定が必要な環境では、最初のコマンドに `--cache /tmp/shift-saas-npm-cache` を加えます。`npm run test:unit` と `npm run test:runtime` で個別実行もできます。
 
-追加の guard 回帰 68 件は `npm test` に含まれません。**Node.js `v24.22.1` の完全一致を要求**し、他の Node 24 を含む別バージョンでは起動時に拒否して 68 件を実行しません。このバージョンを用意して手動で別途実行します。
+guard回帰68件は今も `npm test` に含まれませんが、CI では別ステップの `node scripts/check-guard-regression.mjs` から実行します。下の直接実行コマンドも手動試験として有効です。**Node.js `v24.22.1` の完全一致を要求**し、他の Node 24 を含む別バージョンでは起動時に拒否して68件を実行しません。直接実行と、件数検査を伴う CI の入口は区別します。
 
 ```sh
 node --test test/guard-regression.test.mjs
 ```
 
-範囲・固定 SHA の検査・人工 timeout と実 timeout の区別は [guard-regression-notes.md](./guard-regression-notes.md) に記録されています。同文書の「新規追加テストに対する独立監査・本人採用は別」と「既存 README の古い状態説明も別の残件」は PR #5 作成時点の記録です。PR #5 の監査・採用は冒頭の記録、README の改善案と各固定 head の独立レビュー・本人採用は PR #6 とその監査記録を参照してください。notes 自体はこの追従で変更せず、参照説明だけで残件の解消を断定しません。68 件は unit 14／runtime 8 に加算しません。
+範囲・固定 SHA の検査・人工 timeout と実 timeout の区別は [guard-regression-notes.md](./guard-regression-notes.md) に記録されています。同文書の「独立監査・本人採用は別」「CI 未接続」「古い README も残件」は PR #5 作成時点の記録です。現在の接続は PR #7、各文書版の採用は対応 PR と監査記録を参照してください。notes 自体は変更せず、履歴を現状と取り違えません。68件は unit14／runtime8に加算しません。
 
 ## テスト件数・skip／todo の検知
 
@@ -54,6 +57,9 @@ node --test test/guard-regression.test.mjs
 | --- | --- | --- |
 | unit | 14 | 監査済み PR #2 head `69f7d3d...` の gate.test.mjs。Node の `counts.tests`（suite を除くテスト数） |
 | runtime | 8 | 同版 runtime.test.mjs。SQLite 5 件、DO 到達ゼロ 2 件、公開入口 404 の 1 件 |
+| guard 回帰 | 68 | PR #5 の回帰ファイルを PR #7 の check-guard-regression.mjs で起動し、同じ最終累計を別の下限68で検査 |
+
+補助試験 `node --test test/guard-ci.test.mjs` の実績は30件ですが、このステップ自体には件数・skip／todoを機械強制する集計 guard はありません。終了コードの確認と作者／Dots のログ・内容照合に依存する限界を残します。実 guard68件の下限・skip／todo拒否とは別です。
 
 入力値を回すループ内の各ケースは別件に数えません。runner は、子プロセス終了 0・signal／起動エラーなし・最終 summary が正常・passed=tests・件数が下限以上・failed/cancelled/skipped/todo がすべて 0、を要求します。不正／欠損／複数レコード、パース不能、型不正、テスト起動不能、テスト自身の非ゼロ終了も非ゼロにします。子プロセスには 120 秒の上限、workflow 全体には 10 分の上限があります。
 
@@ -67,7 +73,7 @@ Node `v24.22.1`／npm `11.9.0` で型検査と当時の新しい `npm test` が�
 
 ## CI の接続と concurrency
 
-専用 workflow は実験ディレクトリで lockfile から導入し、型検査・unit・runtime を別ステップで実行します。標準 GitHub-hosted Linux runner、固定 Node／Actions、contents: read、資格情報永続化なし・依存キャッシュ／artifact 保存なしで、Cloudflare 認証やデプロイはありません。
+専用 workflow は実験ディレクトリで lockfile から導入し、型検査・unit・runtime・補助試験・guard回帰を別ステップで実行します。標準 GitHub-hosted Linux runner、固定 Node／Actions、contents: read、資格情報永続化なし・依存キャッシュ／artifact 保存なしで、Cloudflare 認証やデプロイはありません。
 
 concurrency の group は workflow 名・イベント名・ref を含み、別 PR と main push を分離します。`cancel-in-progress` は PR イベントのときだけ true にし、main push の進行中実行は後続到着で取り消しません。ただし同一 group の待機中実行は置換される余地があり、実行順序にも制約があります。**全 main コミットの実行保証ではありません。** 主張する範囲は進行中 main の途中取消防止だけです。実行を重ねる取消・待機置換の実証は未実施です。GitHub 上のマージ阻止確認は上記 PR #4 の既存検証で達成しており、concurrency の実証とは別です。
 
@@ -126,7 +132,7 @@ PR #2 第 1 回修正は P2 の 5 項目に対応しました。未知・空の 
 - 実際の API 入力形式・エラー応答、企業 ID の正規化、ロール／店舗単位の権限、運営代理アクセスは本検証で決めません。
 - 所属の照合後から DO 操作までの間に無効化される進行中リクエストの扱い・競合制御は正本に具体手順がなく未決です。本検証が保証する無効化は、モックの所属変更後に照合を開始する次のリクエストの拒否だけです。
 - Worker 内での全経路、並行実行、永続化を伴う再起動、実環境の DO binding・migration・障害復旧、クラウド上での挙動・料金は未検証です。
-- guard 回帰 68 件の CI 接続は残件です。外側の timeout 後に孫プロセスが残る可能性も未修正で、フォルダ清掃だけでプロセスツリー停止を保証しません。
+- guard回帰68件の CI 接続は PR #7 の本人採用後に main で実行済みです。補助30件の件数／skip／todo非強制と、外側の timeout 後の孫プロセス清掃は残る限界です。フォルダ清掃だけでプロセスツリー停止を保証しません。
 - PR #2 の getter 境界の low 指摘は未修正のまま残っています。
-- [PR #1](https://github.com/magumatari/shift-saas/pull/1) は本人がマージ済みですが、H10 の 2 例は `draft`／承認 `null` のままで、正解例の正式承認ではありません。本人が受け入れた残件の期限を維持します。保護対象変更検知と本人確認運用は **正式な golden 運用前**、REST_SHORTAGE の一般的なデータ整合照合は **例の拡張前**、CRLF・パス区切りを含む Windows 対応は **Windows 検証前** に必要です。既存 assignments のエラーパス、関連 README 追従、golden CI の timeout／Action SHA 固定も別残件です。この追従で追加実装・正式承認したことにはなりません。
-- README 追従の採用状態は PR #6 と各固定 head の監査記録で確認してください。作者確認を独立監査には数えません。採用・リリース前に別 AI の監査が必要で、マージ・必須設定はご本人だけが行います。修正→独立再監査は PR ごとに最大 2 回、同じ指摘が 2 回続けば本人判断という運用を維持します。PR #6 の独立レビューは Dots が手配し、旧 PR #3／#5 の監査ループは再開しません。
+- [PR #1](https://github.com/magumatari/shift-saas/pull/1) は本人がマージ済みですが、H10 の2例は `draft`／承認 `null` のままで、正解例の正式承認ではありません。PR #9 で解消したのは employee 帰属の参照間整合だけで、PR #10 起点 main `a5fb1588a4d336c7d4b4d827bd9a1528eb366822` の時点では一般の隣接性・端点・実測値・limit・違反過不足・偽 PASS・記録完全性（coverage と割当・記録の照合）は未実装です。別の [limit 限定候補 PR #11](https://github.com/magumatari/shift-saas/pull/11) は本修正作成時点（2026-11-16）で未採用であり、その採用状態は該当 PR で確認します。一般 Validator の完成や例拡張前条件の解消とは扱いません。保護対象変更検知と本人確認運用は **正式な golden 運用前**、一般 REST_SHORTAGE 照合は **例の拡張前**、CRLF・パス区切りを含む Windows 対応は **Windows 検証前** という本人が受け入れた期限を維持します。既存 assignments の日付エラーパス、golden CI の timeout／Action SHA 固定も別残件です。この追従で追加実装・正式承認したことにはなりません。
+- 文書追従の採用状態は各 PR と固定 head の監査記録で確認してください。作者確認を独立監査には数えません。採用・リリース前に別 AI の監査が必要で、マージ・必須設定はご本人だけが行います。修正→独立再監査は PR ごとに最大2回、同じ指摘が2回続けば本人判断を維持します。新規文書候補の初回監査は Dots が手配し、旧 PR の監査ループは再開しません。
