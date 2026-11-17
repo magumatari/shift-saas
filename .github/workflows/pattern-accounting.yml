@@ -1,0 +1,44 @@
+name: Pattern minute accounting
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pattern-accounting:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          architecture: x64
+          package-manager-cache: false
+
+      - name: Install locked root dependencies
+        run: npm ci --ignore-scripts --no-fund --no-audit
+
+      - name: Typecheck pattern minute experiment
+        run: node node_modules/typescript/bin/tsc -p experiments/pattern-accounting/tsconfig.json
+
+      - name: Test pattern count boundary with isolated fixtures
+        run: node --test experiments/pattern-accounting/check-pattern-tests.test.mjs
+
+      - name: Test actual pattern cases in both timezones with count checks
+        run: node experiments/pattern-accounting/check-pattern-tests.mjs
